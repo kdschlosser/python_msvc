@@ -170,6 +170,7 @@ class Environment(object):
     def __init__(self, strict_compiler_version=False, dll_build=False):
         self.strict_compiler_version = strict_compiler_version
         self.dll_build = dll_build
+        self._win32 = None
 
     @property
     def msvc_dll_version(self):
@@ -211,7 +212,12 @@ class Environment(object):
         This is used to tell MSBuild what configuration to build
         :return: Win32 or x64
         """
-        return 'Win32' if self.architecture == 'x86' else 'x64'
+        if self._win32 is True:
+            return 'Win32' if self.architecture == 'x86' else 'x64'
+        if self._win32 is False:
+            return self.architecture
+
+        return '???' if self.architecture == 'x86' else 'x64'
 
     @property
     def platform_toolset(self):
@@ -851,6 +857,9 @@ class Environment(object):
         return msbuild_path
 
     def _command(self, solution):
+        with open(solution, 'r') as f:
+            self._win32 = 'Win32' in f.read()
+
         template = (
             '"{msbuild_path}" '
             '"{solution}" '
@@ -1250,7 +1259,7 @@ def update_vs_project(env, path):
                                 sub_sub_item.text,
                                 libs
                             )
-                            
+
             new_data = iter_node(node)
             if new_data is not None:
                 root.insert(i, new_data)
