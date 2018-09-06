@@ -1057,7 +1057,7 @@ def update_vs_project(env, path):
     target_platform = env.target_platform
     includes = env.py_includes
     libs = env.py_libraries
-    dependency = env.py_dependency + ';%(AdditionalDependencies)'
+    dependency = [env.py_dependency]
 
     from xml.etree import ElementTree
 
@@ -1129,11 +1129,13 @@ def update_vs_project(env, path):
 
         if old_node.text is not None:
             new_node.text = old_node.text.replace('Win32', 'x64')
+            new_node.text = new_node.text.replace('x86', 'x64')
 
         for key, value in old_node.attrib.items():
             if 'x64' in value:
                 return None
             new_node.attrib[key] = value.replace('Win32', 'x64')
+            new_node.attrib[key] = new_node.attrib[key].replace('x86', 'x64')
 
         for old_sub_node in old_node:
             new_nodes = iter_node(old_sub_node)
@@ -1145,6 +1147,24 @@ def update_vs_project(env, path):
     # here is the testing to se if the file has been updated before.
     i = 0
 
+    def add_items(old_items, new_items):
+        if not isinstance(old_items, list):
+            old_items = old_items.split(';')
+
+        for old_item in old_items[:]:
+            if (
+                not old_item.startswith('$') and
+                os.path.dirname(old_item) and
+                not os.path.exists(old_item)
+            ):
+                old_items.remove(old_item)
+
+        for new_item in new_items:
+            if new_item not in old_items:
+                old_items.insert(0, new_item)
+
+        return ';'.join(old_items)
+
     for node in root[:]:
         tag = node.tag.replace(vcxproj_xmlns, '')
 
@@ -1154,23 +1174,29 @@ def update_vs_project(env, path):
             node.attrib['Label'] == 'ProjectConfigurations'
         ):
             for sub_item in node[:]:
-                node.append(iter_node(sub_item))
+                new_data = iter_node(sub_item)
+                if new_data is not None:
+                    node.append(new_data)
 
         if (
             tag == 'PropertyGroup' and
             'Label' in node.attrib and
             node.attrib['Label'] == 'Configuration'
         ):
-            root.insert(i, iter_node(node))
-            i += 1
+            new_data = iter_node(node)
+            if new_data is not None:
+                root.insert(i, new_data)
+                i += 1
 
         if (
             tag == 'ImportGroup' and
             'Label' in node.attrib and
             node.attrib['Label'] == 'PropertySheets'
         ):
-            root.insert(i, iter_node(node))
-            i += 1
+            new_data = iter_node(node)
+            if new_data is not None:
+                root.insert(i, new_data)
+                i += 1
 
         if (
             tag == 'PropertyGroup' and
@@ -1197,18 +1223,10 @@ def update_vs_project(env, path):
                             ''
                         )
                         if sub_sub_tag == 'AdditionalIncludeDirectories':
-                            cur_includes = sub_sub_item.text.split(';')
-                            for inc in includes:
-                                if inc not in cur_includes:
-                                    cur_includes.insert(0, inc)
-
-                            for inc in cur_includes[:]:
-                                if (
-                                    not inc.startswith('$') and
-                                    not os.path.exists(inc)
-                                ):
-                                    cur_includes.remove(inc)
-                            sub_sub_item.text = ';'.join(cur_includes)
+                            sub_sub_item.text = add_items(
+                                sub_sub_item.text,
+                                includes
+                            )
 
                 elif sub_tag == 'Link':
                     for sub_sub_item in sub_item:
@@ -1220,30 +1238,19 @@ def update_vs_project(env, path):
                             cur_deps = sub_sub_item.text.split(';')
                             for dep in cur_deps[:]:
                                 if (
-                                    not dep.startswith('$') and
-                                    not os.path.exists(dep)
+                                    dep.startswith('Python') and
+                                    dep.endswith('.lib')
                                 ):
                                     cur_deps.remove(dep)
 
-                            sub_sub_item.text = ';'.join(
-                                [dependency] + cur_deps
-                            )
+                            sub_sub_item.text = add_items(cur_deps, dependency)
 
                         if sub_sub_tag == 'AdditionalLibraryDirectories':
-                            cur_libs = sub_sub_item.text.split(';')
-                            for lib in libs:
-                                if lib not in cur_libs:
-                                    cur_libs.insert(0, lib)
-
-                            for lib in cur_libs[:]:
-                                if (
-                                    not lib.startswith('$') and
-                                    not os.path.exists(lib)
-                                ):
-                                    cur_libs.remove(lib)
-
-                            sub_sub_item.text = ';'.join(cur_libs)
-
+                            sub_sub_item.text = add_items(
+                                sub_sub_item.text,
+                                libs
+                            )
+                            
             new_data = iter_node(node)
             if new_data is not None:
                 root.insert(i, new_data)
