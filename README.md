@@ -63,9 +63,9 @@ if building a C extension using distutils or setuptools
     extension = Extension(
         name='example',
         sources=['path_to_sources_files'],
-        include_dirs=[env.py_includes.split(';')],
+        include_dirs=env.py_includes,
         define_macros=[],
-        libraries=[env.py_libraries.split(';')],
+        libraries=env.py_libraries,
         extra_objects=[env.py_dependency],
         extra_compile_args=[],
         extra_link_args=[],

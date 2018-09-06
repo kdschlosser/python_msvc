@@ -259,7 +259,7 @@ class Environment(object):
         for root, dirs, files in os.walk(python_include):
             for d in dirs:
                 python_includes += [os.path.join(root, d)]
-        return ';'.join(python_includes)
+        return python_includes
 
     @property
     def py_libraries(self):
@@ -269,7 +269,7 @@ class Environment(object):
         for root, dirs, files in os.walk(python_lib):
             for d in dirs:
                 python_libs += [os.path.join(root, d)]
-        return ';'.join(python_libs)
+        return python_libs
 
     @property
     def target_framework(self):
@@ -1055,8 +1055,8 @@ def update_vs_project(env, path):
     tools_version = env.tools_version
     platform_toolset = env.platform_toolset
     target_platform = env.target_platform
-    includes = env.py_includes + ';%(AdditionalIncludeDirectories)'
-    libs = env.py_libraries + ';%(AdditionalLibraryDirectories)'
+    includes = env.py_includes
+    libs = env.py_libraries
     dependency = env.py_dependency + ';%(AdditionalDependencies)'
 
     from xml.etree import ElementTree
@@ -1197,7 +1197,18 @@ def update_vs_project(env, path):
                             ''
                         )
                         if sub_sub_tag == 'AdditionalIncludeDirectories':
-                            sub_sub_item.text = includes
+                            cur_includes = sub_sub_item.text.split(';')
+                            for inc in includes:
+                                if inc not in cur_includes:
+                                    cur_includes.insert(0, inc)
+
+                            for inc in cur_includes[:]:
+                                if (
+                                    not inc.startswith('$') and
+                                    not os.path.exists(inc)
+                                ):
+                                    cur_includes.remove(inc)
+                            sub_sub_item.text = ';'.join(cur_includes)
 
                 elif sub_tag == 'Link':
                     for sub_sub_item in sub_item:
@@ -1206,10 +1217,33 @@ def update_vs_project(env, path):
                             ''
                         )
                         if sub_sub_tag == 'AdditionalDependencies':
-                            sub_sub_item.text = dependency
+                            cur_deps = sub_sub_item.text.split(';')
+                            for dep in cur_deps[:]:
+                                if (
+                                    not dep.startswith('$') and
+                                    not os.path.exists(dep)
+                                ):
+                                    cur_deps.remove(dep)
+
+                            sub_sub_item.text = ';'.join(
+                                [dependency] + cur_deps
+                            )
 
                         if sub_sub_tag == 'AdditionalLibraryDirectories':
-                            sub_sub_item.text = libs
+                            cur_libs = sub_sub_item.text.split(';')
+                            for lib in libs:
+                                if lib not in cur_libs:
+                                    cur_libs.insert(0, lib)
+
+                            for lib in cur_libs[:]:
+                                if (
+                                    not lib.startswith('$') and
+                                    not os.path.exists(lib)
+                                ):
+                                    cur_libs.remove(lib)
+
+                            sub_sub_item.text = ';'.join(cur_libs)
+
             new_data = iter_node(node)
             if new_data is not None:
                 root.insert(i, new_data)
