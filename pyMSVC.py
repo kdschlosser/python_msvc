@@ -1,5 +1,18 @@
 # -*- coding: utf-8 -*-
 
+# Written By: Kevin Schlosser
+
+# This code is NOT Licensed. This is done so that it can be used in conjunction
+# with other Licenses.
+
+# I do not give any warranty and I accept no liability for the use of this
+# code. If you run this code you accept all liability.
+# This code IS NOT for sale. It is not intended to be sold. It is 100% free to
+# use and modify. If modified add your name to the "Written By" at the top of
+# this file. DO NOT remove my name. I worked hard to write this code and I
+# would like to get the credit for it. 
+
+
 from __future__ import print_function
 import os
 import sys
