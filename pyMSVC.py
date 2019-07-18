@@ -2185,6 +2185,33 @@ class Environment(dict):
 
 
 if __name__ == '__main__':
-    print(Environment())
+    e = Environment()
+    print(e)
     print('\n\n')
+    print('-- Existing Environment')
+    print()
+    for key in sorted(os.environ.keys()):
+        value = os.environ[key]
+        if ';' in value:
+            print(key, ':')
+            value = '\n'.join('    ' + v for v in value.split(';'))
+            print(value)
+        else:
+            print(key, ':', os.environ[key])
+
+    os.environ.update(e)
+    print('\n\n')
+    print('-- New Environment')
+    print()
+    for key in sorted(os.environ.keys()):
+        value = os.environ[key]
+        if ';' in value:
+            print(key, ':')
+            value = '\n'.join('    ' + v for v in value.split(';'))
+            print(value)
+        else:
+            print(key, ':', os.environ[key])
+
+
+
 
