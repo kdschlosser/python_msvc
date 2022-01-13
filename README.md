@@ -5,14 +5,14 @@ A fairly stupid proof build environment setup for compiling c extensions using p
 I created this module because distutils does not do a good job at setting up a Windows build environment.
 Distutils relies on static paths for the MSVC compiler It does not detect Visual Studio Build tools installations. And 
 the largest problem with it is that it uses the vcvars*.bat files included with the compiler. It runs a subprocess 
-takes a snapshot of the computers environment then runs vcvarsall and takes another snapshot of the environment. It 
+takes a snapshot of the computer's environment then runs vcvarsall and takes another snapshot of the environment. It 
 then compares the before and after and stores the differences between the 2. Now this would be a fantastic approach if
 Microsoft had made the vcvars*.bat files in a manner that would et up a correct build environment. There have been known issues
 using these files in the past.
 
 The single largest problem with the vcvars files is NONE of them check to see if any of the components actually exist.
 We all know how good applications are when they get uninstalled. They do a very thorough job of removing all traces 
-from the registry.. NOT. Microsoft is the biggest offender of this.
+from the registry. NOT. Microsoft is the biggest offender of this.
 
 My system does not use the vcvars* files the information is obtained from the registry. The paths that are obtained are 
 checked to ensure they exist.
@@ -26,7 +26,6 @@ whichever installation it finds first is the winner.
 
 Both parameters accept either None or a float that is the version number fo the MSVC compiler that you want to use.
 
-* 9.0 Visual Studio 2008
 * 10.0 Visual Studio 2010
 * 11.0 Visual Studio 2012
 * 12.0 Visual Studio 2013
@@ -40,16 +39,16 @@ compiler versions. You may or may not experience any issues if you do not use th
 would have to use that portion of the CLR in order to have an issue. This is why it is a recommendation.
 
 
-Python versions 3.5, 3.6, 3.7, 3.8 use any of the MSVC compiler versions beginning with 14.0
-Python versions 3.3, 3.4 use MSVC compiler version 10.0
-Python versions 2.6, 2.7, 3.0, 3.1, 3.2 use MSVC compiler version 9.0
+Python versions 3.9 and 3.10 use MSVC Version 14.2
+Python versions 3.5, 3.6, 3.7, 3.8 use any of the MSVC compiler version 14.x 
+Python version 3.4 uses MSVC compiler version 10.0
 
 If you would like to have the above done for you automatically and have the environment set up. Yuo can use 
 `environment = pyMSVC.setup_environment()`. This will rise an exception if the msvc version that is needed based on the 
 python version is not found. This will set up the environment for you as well without the need for any additional steps.
 
-I added the minimum_visual_c_version argument so you can specify a minimum compiler version to use. You may have code 
-that will compile using MSVC 10.0 but will fail if compiled using MSVC 9.0.
+I added the minimum_visual_c_version parameter which allows you to specify a minimum compiler version to use. 
+You may have code that will compile using MSVC 10.0 but will fail if compiled using MSVC 9.0.
 
 So to sum it up.
 strict_visual_c_version you will use if only a specific compiler version is to be used to compile.
@@ -68,7 +67,7 @@ Here is an example of using pyMSVC to only set up the build environment.
 
 You will want to set up the environment before you import distutils or setuptools.
 
-Now onto some of the goodies. This module provides access to a bucket load of information. 
+Now onto the goodies. This module provides access to a bucket load of information. 
     
     
 Here are the properties and attributes available
@@ -155,5 +154,4 @@ Here are the properties and attributes available
 
 
 Visual Studio 2019 has a whole new system for package installation. It no longer stores the information in the registry 
-for installed packages. I will be writing a ctypes binder so I will be able to call the API functions needed in order 
-to collect this information.
+for installed packages.
