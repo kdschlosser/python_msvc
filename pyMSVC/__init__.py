@@ -41,10 +41,7 @@ from typing import Optional, Union
 
 import platform
 
-if 'Windows' in platform.platform():
-    windows = True
-else:
-    windows = False
+windows = 'Windows' in platform.platform()
 
 if windows:
     import pyMSVC.vswhere
