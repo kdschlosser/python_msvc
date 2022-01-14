@@ -212,99 +212,59 @@ class ISetupPackageReference(IUnknown):
     _iid_ = IID_ISetupPackageReference
 
     def __gt__(self, other):
+        if isinstance(other, ISetupPackageReference):
+            return self.version > other.version
+
         other = _convert_version(other)
 
         if not isinstance(other, tuple):
             return False
 
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] <= item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item <= other[i]:
-                    return False
-
-        return True
+        return self.version > other
 
     def __lt__(self, other):
+        if isinstance(other, ISetupPackageReference):
+            return self.version < other.version
+
         other = _convert_version(other)
 
-        if not isinstance(other, tuple):
+        if not isinstance(other, str):
             return False
 
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] >= item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item >= other[i]:
-                    return False
-
-        return True
+        return self.version < other
 
     def __ge__(self, other):
+        if isinstance(other, ISetupPackageReference):
+            return self.version >= other.version
+
         other = _convert_version(other)
 
-        if not isinstance(other, tuple):
+        if not isinstance(other, str):
             return False
 
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] < item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item < other[i]:
-                    return False
-
-        return True
+        return self.version >= other
 
     def __le__(self, other):
+        if isinstance(other, ISetupPackageReference):
+            return self.version <= other.version
+
         other = _convert_version(other)
 
-        if not isinstance(other, tuple):
+        if not isinstance(other, str):
             return False
 
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] > item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item > other[i]:
-                    return False
-
-        return True
+        return self.version <= other
 
     def __eq__(self, other):
+        if isinstance(other, ISetupPackageReference):
+            return self.version == other.version
+
         other = _convert_version(other)
 
-        if not isinstance(other, tuple):
+        if not isinstance(other, str):
             return object.__eq__(self, other)
 
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] != item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item != other[i]:
-                    return False
-
-        return True
+        return self.version == other
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -374,15 +334,10 @@ def _convert_version(other):
     elif isinstance(other, int):
         other = (other,)
     elif isinstance(other, float):
-        major = int(other)
-        minor = other - major
-        factor = 10
+        other = tuple(int(item) for item in str(other).split('.'))
 
-        while int(minor * factor) != minor * factor:
-            factor *= 10
-
-        minor = int(minor * factor)
-        other = (major, minor)
+    if isinstance(other, tuple):
+        other = '.'.join(str(item) for item in other)
 
     return other
 
@@ -395,104 +350,6 @@ class ISetupInstance(IUnknown):
     def __call__(self, helper):
         self._helper = helper
         return self
-
-    def __gt__(self, other):
-        other = _convert_version(other)
-
-        if not isinstance(other, tuple):
-            return False
-
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] <= item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item <= other[i]:
-                    return False
-
-        return True
-
-    def __lt__(self, other):
-        other = _convert_version(other)
-
-        if not isinstance(other, tuple):
-            return False
-
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] >= item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item >= other[i]:
-                    return False
-
-        return True
-
-    def __ge__(self, other):
-        other = _convert_version(other)
-
-        if not isinstance(other, tuple):
-            return False
-
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] < item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item < other[i]:
-                    return False
-
-        return True
-
-    def __le__(self, other):
-        other = _convert_version(other)
-
-        if not isinstance(other, tuple):
-            return False
-
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] > item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item > other[i]:
-                    return False
-
-        return True
-
-    def __eq__(self, other):
-        other = _convert_version(other)
-
-        if not isinstance(other, tuple):
-            return object.__eq__(self, other)
-
-        version = tuple(int(item) for item in self.version.split('.'))
-
-        if len(version) >= len(other):
-            for i, item in enumerate(other):
-                if version[i] != item:
-                    return False
-        else:
-            for i, item in enumerate(version):
-                if item != other[i]:
-                    return False
-
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     @property
     def id(self):
