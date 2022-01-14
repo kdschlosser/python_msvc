@@ -47,7 +47,7 @@ else:
     windows = False
 
 if windows:
-    import vswhere
+    import pyMSVC.vswhere
 
     from ctypes import HRESULT
     from ctypes.wintypes import (
@@ -75,7 +75,7 @@ if windows:
     _shell32 = ctypes.windll.Shell32
 
     try:
-        _vswhere = vswhere.SetupConfiguration.GetSetupConfiguration()
+        _vswhere = pyMSVC.vswhere.SetupConfiguration.GetSetupConfiguration()
     except:  # NOQA
         _vswhere = None
 
@@ -873,7 +873,7 @@ class VisualCInfo(object):
                     self._devinit_path = devinit_path
 
     @property
-    def cpp_installation(self) -> vswhere.ISetupInstance2:
+    def cpp_installation(self) -> pyMSVC.vswhere.ISetupInstance2:
         return self._cpp_installation
 
     @property
