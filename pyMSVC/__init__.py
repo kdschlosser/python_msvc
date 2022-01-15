@@ -133,17 +133,30 @@ def _get_file_version(filename):
         ffi.dwFileVersionLS & 0xFFFF,
     )
 
-
 if windows:
-    CSIDL_PROGRAM_FILES = 0x0026
+    CSIDL_PROGRAM_FILES = 0x26
+    CSIDL_PROGRAM_FILESX86 = 0x2A
 
     SHGFP_TYPE_CURRENT = 0
     MAX_PATH = 260
     CSIDL_FLAG_DONT_VERIFY = 16384
 
+    # noinspection PyUnboundLocalVariable
     SHGetFolderPathW = _shell32.SHGetFolderPathW
     SHGetFolderPathW.restype = HRESULT
     SHGetFolderPathW.argtypes = [HWND, INT, HANDLE, DWORD, LPWSTR]
+
+    buf = ctypes.create_unicode_buffer(MAX_PATH)
+
+    SHGetFolderPathW(
+        0,
+        CSIDL_PROGRAM_FILESX86 | CSIDL_FLAG_DONT_VERIFY,
+        0,
+        SHGFP_TYPE_CURRENT,
+        buf
+    )
+
+    PROGRAM_FILES_X86 = buf.value
 
     buf = ctypes.create_unicode_buffer(MAX_PATH)
 
@@ -155,7 +168,8 @@ if windows:
         buf
     )
 
-    PROGRAM_FILES_X86 = buf.value
+    PROGRAM_FILES = buf.value
+
 
 _found_cl = {}
 
@@ -298,7 +312,9 @@ def _convert_version(ver):
         ver = tuple(int(item) for item in ver)
 
     if not isinstance(ver, tuple):
-        raise TypeError('Version is not correct type(' + str(type(ver)) + ')')
+        raise TypeError(
+            'Version is not correct type({0})'.format(type(ver))
+        )
 
     ver = '.'.join(str(item) for item in ver)
 
@@ -319,10 +335,10 @@ class Environment(object):
 
     def __init__(
         self,
-        strict_c_version: Optional[Union[int, float]] = None,
         minimum_c_version: Optional[Union[int, float]] = None,
-        strict_toolkit_version: Optional[int] = None,
+        strict_c_version: Optional[Union[int, float]] = None,
         minimum_toolkit_version: Optional[int] = None,
+        strict_toolkit_version: Optional[int] = None,
         minimum_sdk_version: Optional[str] = None,
         strict_sdk_version: Optional[str] = None,
         minimum_net_version: Optional[str] = None,
@@ -332,10 +348,10 @@ class Environment(object):
 
         self.visual_c = VisualCInfo(
             self,
-            strict_c_version,
             minimum_c_version,
-            strict_toolkit_version,
+            strict_c_version,
             minimum_toolkit_version,
+            strict_toolkit_version,
         )
 
         self.visual_studio = VisualStudioInfo(
@@ -450,8 +466,15 @@ class Environment(object):
             __VSCMD_script_err_count='0'
         )
 
+        env_path = set()
+
         def update_env(cls):
             for key, value in cls:
+                if key == 'Path':
+                    for item in value.split(';'):
+                        env_path.add(item)
+                    continue
+
                 if key in env:
                     env[key] += ';' + value
                 else:
@@ -462,7 +485,7 @@ class Environment(object):
         update_env(self.windows_sdk)
         update_env(self.dot_net)
 
-        env['Path'] += ';' + path
+        env['Path'] = (';'.join(env_path)) + ';' + path
 
         return env
 
@@ -641,11 +664,11 @@ class VisualCInfo(object):
 
     def __init__(
         self, 
-        environ: Environment, 
-        strict_c_version: Optional[Union[int, float]] = None,
+        environ: Environment,
         minimum_c_version: Optional[Union[int, float]] = None,
-        strict_toolkit_version: Optional[int] = None,
-        minimum_toolkit_version: Optional[int] = None
+        strict_c_version: Optional[Union[int, float]] = None,
+        minimum_toolkit_version: Optional[int] = None,
+        strict_toolkit_version: Optional[int] = None
     ):
         self.environment = environ
         self.platform = environ.platform
@@ -814,7 +837,9 @@ class VisualCInfo(object):
                     )
 
                     if os.path.exists(tools_redist_directory):
-                        self._tools_redist_directory = tools_redist_directory + '\\'
+                        self._tools_redist_directory = (
+                            tools_redist_directory + '\\'
+                        )
 
                         msvc_dll_path = os.path.join(
                             tools_redist_directory,
@@ -849,7 +874,10 @@ class VisualCInfo(object):
                     self._msbuild_path = msbuild_path
 
                 ide_directory = os.path.join(
-                    cpp_installation.path, 'Common7', 'IDE', 'VC'
+                    cpp_installation.path,
+                    'Common7',
+                    'IDE',
+                    'VC'
                 )
                 if os.path.exists(ide_directory):
                     self._ide_install_directory = ide_directory
@@ -873,7 +901,32 @@ class VisualCInfo(object):
                     self._devinit_path = devinit_path
 
     @property
-    def cpp_installation(self) -> vswhere.ISetupInstance2:
+    def cmake_paths(self) -> list:
+        paths = []
+        ide_path = os.path.split(self.ide_install_directory)[0]
+
+        cmake_path = os.path.join(
+            ide_path,
+            'CommonExtensions',
+            'Microsoft',
+            'CMake'
+        )
+
+        if os.path.exists(cmake_path):
+            bin_path = os.path.join(cmake_path, 'CMake', 'bin')
+            ninja_path = os.path.join(cmake_path, 'Ninja')
+            if os.path.exists(bin_path):
+                paths += [bin_path]
+
+            if os.path.exists(ninja_path):
+                paths += [ninja_path]
+
+        return paths
+
+    @property
+    def cpp_installation(
+        self
+    ) -> Union[vswhere.ISetupInstance, vswhere.ISetupInstance2]:
         return self._cpp_installation
 
     @property
@@ -882,8 +935,8 @@ class VisualCInfo(object):
 
         reg_path = (
             _winreg.HKEY_LOCAL_MACHINE,
-            'SOFTWARE\\Microsoft\\VisualStudio\\'
-            '{0:.1f}\\Setup\\F#'.format(version)
+            r'SOFTWARE\Microsoft\VisualStudio'
+            r'\{0:.1f}\Setup\F#'.format(version)
         )
 
         f_sharp_path = _get_reg_value(reg_path, 'ProductDir')
@@ -916,13 +969,33 @@ class VisualCInfo(object):
             if os.path.exists(f_sharp_path):
                 return f_sharp_path
 
+        install_dir = os.path.split(self.install_directory)[0]
+        f_sharp_path = os.path.join(
+            install_dir,
+            'Common7',
+            'IDE',
+            'CommonExtensions',
+            'Microsoft',
+            'FSharp',
+            'Tools'
+        )
+        if os.path.exists(f_sharp_path):
+            return f_sharp_path
+
     @property
     def ide_install_directory(self) -> str:
         if self._ide_install_directory is None:
             directory = self.install_directory
-            ide_directory = os.path.abspath(os.path.join(directory, '..'))
+            ide_directory = os.path.abspath(
+                os.path.join(directory, '..')
+            )
 
-            ide_directory = os.path.join(ide_directory, 'Common7', 'IDE', 'VC')
+            ide_directory = os.path.join(
+                ide_directory,
+                'Common7',
+                'IDE',
+                'VC'
+            )
             if os.path.exists(ide_directory):
                 self._ide_install_directory = ide_directory
 
@@ -935,8 +1008,9 @@ class VisualCInfo(object):
         :return: Visual C path
         """
         if self._install_directory is None:
-            self._install_directory = self._installed_c_paths[self.version][
-                'base']
+            self._install_directory = (
+                self._installed_c_paths[self.version]['base']
+            )
 
         return self._install_directory
 
@@ -963,7 +1037,8 @@ class VisualCInfo(object):
 
             reg_path = (
                 _winreg.HKEY_LOCAL_MACHINE,
-                'SOFTWARE\\Policies\\Microsoft\\VisualStudio\\Setup'
+                r'SOFTWARE\Policies\Microsoft'
+                r'\VisualStudio\Setup'
             )
 
             vs_path = _get_reg_value(reg_path, 'SharedInstallationPath')
@@ -986,7 +1061,8 @@ class VisualCInfo(object):
 
             reg_path = (
                 _winreg.HKEY_CLASSES_ROOT,
-                'Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache'
+                r'Local Settings\Software'
+                r'\Microsoft\Windows\Shell\MuiCache'
             )
 
             paths = []
@@ -1195,7 +1271,9 @@ class VisualCInfo(object):
             
         for f in os.listdir(msvc_dll_path):
             if f.endswith('dll'):
-                version = _get_file_version(os.path.join(msvc_dll_path, f))
+                version = _get_file_version(
+                    os.path.join(msvc_dll_path, f)
+                )
                 return '.'.join(str(ver) for ver in version)
 
     @property
@@ -1228,7 +1306,8 @@ class VisualCInfo(object):
                     if folder_name in dirs:
                         if x64 and ('amd64' in root or 'x64' in root):
                             self._msvc_dll_path = os.path.join(
-                                root, folder_name
+                                root,
+                                folder_name
                             )
                             break
                         elif (
@@ -1237,7 +1316,8 @@ class VisualCInfo(object):
                             and 'x64' not in root
                         ):
                             self._msvc_dll_path = os.path.join(
-                                root, folder_name
+                                root,
+                                folder_name
                             )
                             break
 
@@ -1249,7 +1329,10 @@ class VisualCInfo(object):
             tools_install_path = self.tools_install_directory
 
             if 'MSVC' in tools_install_path:
-                redist_path = tools_install_path.replace('Tools', 'Redist')
+                redist_path = tools_install_path.replace(
+                    'Tools',
+                    'Redist'
+                )
                 if (
                     not os.path.exists(redist_path) and
                     'BuildTools' in tools_install_path
@@ -1258,14 +1341,19 @@ class VisualCInfo(object):
                         'BuildRedist', 'BuildTools'
                     )
             else:
-                redist_path = os.path.join(tools_install_path, 'Redist')
+                redist_path = os.path.join(
+                    tools_install_path,
+                    'Redist'
+                )
 
             if not os.path.exists(redist_path):
                 redist_path = os.path.split(redist_path)[0]
                 tools_version = None
 
                 for version in os.listdir(redist_path):
-                    if not os.path.isdir(os.path.join(redist_path, version)):
+                    if not os.path.isdir(
+                        os.path.join(redist_path, version)
+                    ):
                         continue
 
                     if version.startswith('v'):
@@ -1418,15 +1506,17 @@ class VisualCInfo(object):
 
         reg_path = (
             _winreg.HKEY_LOCAL_MACHINE,
-            'SOFTWARE\\Wow6432Node\\Microsoft\Windows\\'
-            'CurrentVersion\\App Paths\\hhw.exe'
+            r'SOFTWARE\Wow6432Node\Microsoft\Windows'
+            r'\CurrentVersion\App Paths\hhw.exe'
         )
 
         html_help_path = _get_reg_value(reg_path, 'Path')
         if html_help_path and os.path.exists(html_help_path):
             return html_help_path
 
-        if os.path.exists(r'C:\Program Files (x86)\HTML Help Workshop'):
+        if os.path.exists(
+            r'C:\Program Files (x86)\HTML Help Workshop'
+        ):
             return r'C:\Program Files (x86)\HTML Help Workshop'
 
     @property
@@ -1439,24 +1529,100 @@ class VisualCInfo(object):
         f_sharp_path = self.f_sharp_path
         msbuild_path = self.msbuild_path
 
-        if self.platform == 'x64':
-            perf_tools_path = os.path.join(
-                self.tools_install_directory,
-                'Team Tools',
-                'Performance Toolsx64'
-            )
-        else:
-            perf_tools_path = os.path.join(
-                self.tools_install_directory,
-                'Team Tools',
-                'Performance Tools'
-            )
+        ide_base_path = os.path.split(self.install_directory)[0]
+        perf_tools_x64_path = os.path.join(
+            ide_base_path,
+            'Team Tools',
+            'Performance Tools',
+            'x64'
+        )
+
+        if os.path.exists(perf_tools_x64_path):
+            path += [perf_tools_x64_path]
+
+        perf_tools_path = os.path.join(
+            ide_base_path,
+            'Team Tools',
+            'Performance Tools'
+        )
+        if os.path.exists(perf_tools_path):
+            path += [perf_tools_path]
+
+        com7_ide_path = os.path.join(
+            ide_base_path,
+            'Common7',
+            'IDE'
+        )
+
+        vc_packages_path = os.path.join(
+            com7_ide_path,
+            'VC',
+            'VCPackages'
+        )
+        if os.path.exists(vc_packages_path):
+            path += [vc_packages_path]
+
+        team_explorer_path = os.path.join(
+            com7_ide_path,
+            'CommonExtensions',
+            'Microsoft',
+            'TeamFoundation',
+            'Team Explorer'
+        )
+        if os.path.exists(team_explorer_path):
+            path += [team_explorer_path]
+
+        intellicode_cli_path = os.path.join(
+            com7_ide_path,
+            'Extensions',
+            'Microsoft',
+            'IntelliCode',
+            'CLI'
+        )
+        if os.path.exists(intellicode_cli_path):
+            path += [intellicode_cli_path]
+
+        roslyn_path = os.path.join(
+            ide_base_path,
+            'MSBuild',
+            'Current',
+            'bin',
+            'Roslyn'
+        )
+        if os.path.exists(roslyn_path):
+            path += [roslyn_path]
+
+        devinit_path = os.path.join(
+            ide_base_path,
+            'Common7',
+            'Tools',
+            'devinit'
+        )
+        if os.path.exists(devinit_path):
+            path += [devinit_path]
+
+        vs_path = os.path.split(ide_base_path)[0]
+        vs_path, edition = os.path.split(vs_path)
+
+        collection_tools_path = os.path.join(
+            vs_path,
+            'Shared',
+            'Common',
+            'VSPerfCollectionTools',
+            'vs' + edition
+        )
+        if os.path.exists(collection_tools_path):
+            path += [collection_tools_path]
+
+        collection_tools_path_x64 = os.path.join(
+            collection_tools_path,
+            'x64'
+        )
+        if os.path.exists(collection_tools_path_x64):
+            path += [collection_tools_path_x64]
 
         if msbuild_path is not None:
             path += [os.path.split(msbuild_path)[0]]
-
-        if os.path.exists(perf_tools_path):
-            path += [perf_tools_path]
 
         if f_sharp_path is not None:
             path += [f_sharp_path]
@@ -1474,10 +1640,8 @@ class VisualCInfo(object):
         if not os.path.exists(bin_path):
             if self.platform == 'x64':
                 bin_path = os.path.join(base_path, 'x64')
-
                 if not os.path.exists(bin_path):
                     bin_path = os.path.join(base_path, 'amd64')
-
             else:
                 bin_path = os.path.join(base_path, 'x86')
                 if not os.path.exists(bin_path):
@@ -1485,6 +1649,8 @@ class VisualCInfo(object):
 
         if os.path.exists(bin_path):
             path += [bin_path]
+
+        path += self.cmake_paths
 
         return path
 
@@ -1547,7 +1713,11 @@ class VisualCInfo(object):
             if not os.path.exists(lib):
                 lib = path
 
-        references_path = os.path.join(lib, 'store', 'references')
+        references_path = os.path.join(
+            lib,
+            'store',
+            'references'
+        )
 
         lib_path = []
         if os.path.exists(lib):
@@ -1577,7 +1747,10 @@ class VisualCInfo(object):
         if atlmfc_path is None:
             return
 
-        atlmfc_include_path = os.path.join(atlmfc_path, 'include')
+        atlmfc_include_path = os.path.join(
+            atlmfc_path,
+            'include'
+        )
         if os.path.exists(atlmfc_include_path):
             return atlmfc_include_path
 
@@ -1652,8 +1825,9 @@ class VisualStudioInfo(object):
         installation = c_info.cpp_installation
 
         if installation is not None:
+            version = installation.version.split('.')[0]
             self.__devenv_version = (
-                str(float(int(installation.version.split('.')[0]))),
+                str(float(int(version))),
                 installation.version
             )
 
@@ -1676,8 +1850,13 @@ class VisualStudioInfo(object):
     @property
     def install_directory(self) -> str:
         if self._install_directory is None:
-            self._install_directory = os.path.abspath(
-                os.path.join(self.c_info.install_directory, '..')
+            install_dir = os.path.join(
+                self.c_info.install_directory,
+                '..'
+            )
+
+            self._install_directory = (
+                os.path.abspath(install_dir)
             )
         return self._install_directory
 
@@ -1685,7 +1864,9 @@ class VisualStudioInfo(object):
     def dev_env_directory(self) -> str:
         if self._dev_env_directory is None:
             self._dev_env_directory = os.path.join(
-                self.install_directory, 'Common7', 'IDE'
+                self.install_directory,
+                'Common7',
+                'IDE'
             )
 
         return self._dev_env_directory
@@ -1695,7 +1876,9 @@ class VisualStudioInfo(object):
         if self._common_tools is None:
 
             common_tools = os.path.join(
-                self.install_directory, 'Common7', 'Tools'
+                self.install_directory,
+                'Common7',
+                'Tools'
             )
             if os.path.exists(common_tools):
                 self._common_tools = common_tools + '\\'
@@ -1721,7 +1904,10 @@ class VisualStudioInfo(object):
             'VisualStudio\\VSPerf',
             'CollectionToolsDir'
         )
-        if collection_tools_dir and os.path.exists(collection_tools_dir):
+        if (
+            collection_tools_dir and
+            os.path.exists(collection_tools_dir)
+        ):
             path.append(collection_tools_dir)
 
         vs_ide_path = self.dev_env_directory
@@ -1753,7 +1939,11 @@ class VisualStudioInfo(object):
             dev_env_dir = self.dev_env_directory
 
             if dev_env_dir is not None:
-                command = '"' + os.path.join(dev_env_dir, 'devenv') + '" /?\n'
+                command = ''.join([
+                    '"',
+                    os.path.join(dev_env_dir, 'devenv'),
+                    '" /?\n'
+                ])
 
                 proc = subprocess.Popen(
                     'cmd',
@@ -1780,7 +1970,8 @@ class VisualStudioInfo(object):
                     self.__devenv_version = (None, None)
                     return self.__devenv_version
 
-                line = line.rstrip('.').strip().split(' Visual Studio ')[-1]
+                line = line.rstrip('.').strip()
+                line = line.split(' Visual Studio ')[-1]
 
                 common_version, version = line.split(' Version ')
 
@@ -1829,15 +2020,16 @@ class VisualStudioInfo(object):
             'v120': '120',
             'v110': '110',
             'v100': '100',
-            'v90' : '90'
+            'v90': '90'
         }
 
         toolset_version = self.c_info.toolset_version
 
         if toolset_version in toolsets:
-            env['VS{0}COMNTOOLS'.format(toolsets[toolset_version])] = (
-                self.common_tools
+            comn_tools = 'VS{0}COMNTOOLS'.format(
+                toolsets[toolset_version]
             )
+            env[comn_tools] = self.common_tools
 
         for key, value in env.items():
             if value is not None and value:
@@ -1882,7 +2074,7 @@ class WindowsSDKInfo(object):
         self._version = None
 
     @property
-    def extension_sdk_directory(self):
+    def extension_sdk_directory(self) -> Optional[str]:
         version = self.version
 
         if version.startswith('10'):
@@ -1906,16 +2098,20 @@ class WindowsSDKInfo(object):
                 'Windows Kits',
                 'Microsoft SDKs\\Windows Kits'
             )
-            extension_path = os.path.join(sdk_path[:-1], 'Extension SDKs')
+            extension_path = os.path.join(
+                sdk_path[:-1],
+                'Extension SDKs'
+            )
+
             if os.path.exists(extension_path):
                 return extension_path
 
     @property
-    def lib_version(self):
+    def lib_version(self) -> str:
         return self.sdk_version
 
     @property
-    def ver_bin_path(self):
+    def ver_bin_path(self) -> str:
         bin_path = self.bin_path[:-1]
 
         version = self.version
@@ -1930,15 +2126,18 @@ class WindowsSDKInfo(object):
             return bin_path
 
     @property
-    def mssdk(self):
+    def mssdk(self) -> Optional[str]:
         return self.directory
 
     @property
-    def ucrt_version(self):
+    def ucrt_version(self) -> Optional[str]:
         if self.version == '10.0':
             sdk_version = self.sdk_version
         else:
-            sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
+            sdk_versions = _read_reg_keys(
+                'Microsoft SDKs\\Windows',
+                True
+            )
             if 'v10.0' in sdk_versions:
                 sdk_version = _get_reg_value(
                     'Microsoft SDKs\\Windows\\v10.0',
@@ -1954,7 +2153,7 @@ class WindowsSDKInfo(object):
             return sdk_version[:-1]
 
     @property
-    def ucrt_lib_directory(self):
+    def ucrt_lib_directory(self) -> Optional[str]:
         if self.version == '10.0':
             directory = self.directory
             directory = os.path.join(
@@ -1966,7 +2165,10 @@ class WindowsSDKInfo(object):
             )
 
         else:
-            sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
+            sdk_versions = _read_reg_keys(
+                'Microsoft SDKs\\Windows',
+                True
+            )
             if 'v10.0' in sdk_versions:
                 sdk_version = _get_reg_value(
                     'Microsoft SDKs\\Windows\\v10.0',
@@ -1995,7 +2197,7 @@ class WindowsSDKInfo(object):
             return directory
 
     @property
-    def ucrt_headers_directory(self):
+    def ucrt_headers_directory(self) -> Optional[str]:
         if self.version == '10.0':
             directory = self.directory
             directory = os.path.join(
@@ -2006,7 +2208,10 @@ class WindowsSDKInfo(object):
             )
 
         else:
-            sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
+            sdk_versions = _read_reg_keys(
+                'Microsoft SDKs\\Windows',
+                True
+            )
             if 'v10.0' in sdk_versions:
                 sdk_version = _get_reg_value(
                     'Microsoft SDKs\\Windows\\v10.0',
@@ -2034,11 +2239,14 @@ class WindowsSDKInfo(object):
             return directory
 
     @property
-    def ucrt_sdk_directory(self):
+    def ucrt_sdk_directory(self) -> Optional[str]:
         directory = self.directory
 
         if self.version != '10.0':
-            sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
+            sdk_versions = _read_reg_keys(
+                'Microsoft SDKs\\Windows',
+                True
+            )
             if 'v10.0' in sdk_versions:
                 directory = _get_reg_value(
                     'Microsoft SDKs\\Windows\\v10.0',
@@ -2055,7 +2263,7 @@ class WindowsSDKInfo(object):
             return directory
 
     @property
-    def bin_path(self):
+    def bin_path(self) -> Optional[str]:
         directory = self.directory
         if directory:
             bin_path = os.path.join(
@@ -2066,7 +2274,7 @@ class WindowsSDKInfo(object):
             return bin_path + '\\'
 
     @property
-    def lib(self):
+    def lib(self) -> list:
         directory = self.directory
         if not directory:
             return []
@@ -2125,22 +2333,31 @@ class WindowsSDKInfo(object):
         return lib
 
     @property
-    def path(self):
+    def path(self) -> list:
         path = []
         ver_bin_path = self.ver_bin_path
-
-        if not ver_bin_path:
-            return []
 
         if self.platform == 'x64':
             bin_path = os.path.join(ver_bin_path, 'x64')
             if not os.path.exists(bin_path):
-                bin_path = os.path.join(ver_bin_path, 'amd64')
+                bin_path = os.path.join(
+                    ver_bin_path,
+                    'amd64'
+                )
         else:
             bin_path = os.path.join(ver_bin_path, 'x86')
 
             if not os.path.exists(bin_path):
                 bin_path = ver_bin_path
+
+        if os.path.exists(bin_path):
+            path += [bin_path]
+
+        bin_path = self.bin_path
+        bin_path = os.path.join(
+            bin_path,
+            'x64'
+        )
 
         if os.path.exists(bin_path):
             path += [bin_path]
@@ -2152,7 +2369,7 @@ class WindowsSDKInfo(object):
         return path
 
     @property
-    def type_script_path(self):
+    def type_script_path(self) -> Optional[str]:
         program_files = os.environ.get(
             'ProgramFiles(x86)',
             'C:\\Program Files (x86)'
@@ -2172,18 +2389,28 @@ class WindowsSDKInfo(object):
                     continue
                 max_ver = max(max_ver, version)
 
-            type_script_path = os.path.join(type_script_path, str(max_ver))
+            type_script_path = os.path.join(
+                type_script_path,
+                str(max_ver)
+            )
 
             if os.path.exists(type_script_path):
                 return type_script_path
 
     @property
-    def include(self):
+    def include(self) -> list:
         directory = self.directory
         if self.version == '10.0':
-            include_path = os.path.join(directory, 'include', self.sdk_version)
+            include_path = os.path.join(
+                directory,
+                'include',
+                self.sdk_version
+            )
         else:
-            include_path = os.path.join(directory, 'include')
+            include_path = os.path.join(
+                directory,
+                'include'
+            )
 
         includes = [include_path]
 
@@ -2204,11 +2431,11 @@ class WindowsSDKInfo(object):
         return includes
 
     @property
-    def lib_path(self):
+    def lib_path(self) -> list:
         return self.sdk_lib_path
 
     @property
-    def sdk_lib_path(self):
+    def sdk_lib_path(self) -> list:
         directory = self.directory
         version = self.version
 
@@ -2237,7 +2464,7 @@ class WindowsSDKInfo(object):
         return lib_path
 
     @property
-    def windows_sdks(self):
+    def windows_sdks(self) -> list:
         """
         Windows SDK versions that are compatible with Visual C
         :return: compatible Windows SDK versions
@@ -2260,14 +2487,13 @@ class WindowsSDKInfo(object):
             self._minimum_sdk_version is not None and
             self._minimum_sdk_version in sdk_versions
         ):
-            sdk_versions = (
-                sdk_versions[:sdk_versions.index(self._minimum_sdk_version) + 1]
-            )
+            index = sdk_versions.index(self._minimum_sdk_version)
+            sdk_versions = sdk_versions[:index + 1]
 
         return sdk_versions
 
     @property
-    def version(self):
+    def version(self) -> str:
         """
         This is used in the solution file to tell the compiler what SDK to use.
         We obtain a list of compatible Windows SDK versions for the
@@ -2278,31 +2504,27 @@ class WindowsSDKInfo(object):
         """
 
         if self._version is None:
+            sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
             if self._strict_sdk_version is not None:
-                sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
-                if 'v' + self._strict_sdk_version in sdk_versions:
-                    self._version = self._strict_sdk_version
-                    return self._version
-
                 if self._strict_sdk_version.startswith('10.0'):
                     keys = _read_reg_keys('Windows Kits\\Installed Roots')
                     if self._strict_sdk_version in keys:
                         self._version = '10.0'
                         return self._version
 
-                raise RuntimeError(
-                    'Unable to locate SDK {0}'.format(self._strict_sdk_version)
-                )
+                    raise RuntimeError(
+                        'Unable to locate Windows SDK ' +
+                        self._strict_sdk_version
+                    )
+
+                if 'v' + self._strict_sdk_version in sdk_versions:
+                    self._version = self._strict_sdk_version
+                    return self._version
 
             for sdk in self.windows_sdks:
-                sdk_versions = _read_reg_keys('Microsoft SDKs\\Windows', True)
                 if sdk in sdk_versions:
-                    if self._strict_sdk_version is None:
-                        self._version = sdk[1:]
-                        return self._version
-
                     sdk_version = _get_reg_value(
-                        'Microsoft SDKs\\Windows\\v' + self._strict_sdk_version,
+                        'Microsoft SDKs\\Windows\\' + sdk,
                         'ProductVersion',
                         True
                     )
@@ -2311,25 +2533,39 @@ class WindowsSDKInfo(object):
                         while sdk_version.count('.') < 3:
                             sdk_version += '.0'
 
-                    if sdk_version == self._strict_sdk_version:
-                        self._version = sdk[1:]
-                        return self._version
-
-                    if (
-                        self._strict_sdk_version.startswith('10.0') and
-                        sdk == 'v10.0'
-                    ):
-                        keys = _read_reg_keys('Windows Kits\\Installed Roots')
-                        if self._strict_sdk_version in keys:
+                    if self._strict_sdk_version is not None:
+                        if self._strict_sdk_version == sdk_version:
                             self._version = sdk[1:]
                             return self._version
 
-            raise RuntimeError('Unable to locate SDK')
+                        continue
+
+                    if self._minimum_sdk_version is not None:
+                        if self._minimum_sdk_version.count('.') > 1:
+                            if sdk_version < self._minimum_sdk_version:
+                                break
+
+                    self._version = sdk[1:]
+                    return self._version
+
+            if self._strict_sdk_version is not None:
+                raise RuntimeError(
+                    'Unable to locate Windows SDK version ' +
+                    self._strict_sdk_version
+                )
+
+            if self._minimum_sdk_version is not None:
+                raise RuntimeError(
+                    'Unable to locate Windows SDK vesion >= ' +
+                    self._minimum_sdk_version
+                )
+
+            raise RuntimeError('Unable to locate Windows SDK')
 
         return self._version
 
     @property
-    def sdk_version(self):
+    def sdk_version(self) -> str:
         """
         This is almost identical to target_platform. Except it returns the
         actual version of the Windows SDK not the truncated version.
@@ -2388,7 +2624,7 @@ class WindowsSDKInfo(object):
         return self._sdk_version
 
     @property
-    def directory(self):
+    def directory(self) -> Optional[str]:
         """
         Path to the Windows SDK version that has been found.
         :return: Windows SDK path
@@ -2396,13 +2632,13 @@ class WindowsSDKInfo(object):
 
         if self._directory is None:
             version = self.version
+
             if self._strict_sdk_version is None:
                 self._directory = _get_reg_value(
                     'Microsoft SDKs\\Windows\\v' + version,
                     'InstallationFolder',
                     True
                 )
-
                 return self._directory
 
             if self._strict_sdk_version == version:
@@ -2451,7 +2687,7 @@ class WindowsSDKInfo(object):
         if ver_bin_path:
             ver_bin_path += '\\'
 
-        if directory:
+        if directory and not directory.endswith('\\'):
             directory += '\\'
 
         lib_version = self.lib_version
@@ -2525,12 +2761,11 @@ class NETInfo(object):
         .NET 32bit framework version
         :return: x86 .NET framework version
         """
-
         if self._version_32 is None:
+            target_framework = None
             installation = self.c_info.cpp_installation
 
             if installation is not None:
-                version = None
                 for package in installation.packages.msi:
                     if (
                         package.id.startswith('Microsoft.Net') and
@@ -2541,74 +2776,114 @@ class NETInfo(object):
                             if self._strict_net_version == package:
                                 self._version_32 = 'v' + package.version
                                 return self._version_32
-
-                        if self._minimum_net_version is not None:
-                            if self._minimum_net_version < package:
+                            else:
                                 continue
 
-                        if version is None:
-                            version = package
-                        elif package > version:
-                            version = package
+                        if self._minimum_net_version is not None:
+                            if package < self._minimum_net_version:
+                                continue
 
-                if version is not None:
-                    self._version_32 = 'v' + version.version
+                        if target_framework is None:
+                            target_framework = package
+                        elif package > target_framework:
+                            target_framework = package
+
+                if target_framework is not None:
+                    self._version_32 = 'v' + target_framework.version
                     return self._version_32
-
-            target_frameworks = {
-                14.0: ('4.8*', '4.7*', '4.6*', '4.5*', '4.0*', '3.5*', '3.0*', '2.0*'),
-                12.0: ('4.5*', '4.0*', '3.5*', '3.0*', '2.0*'),
-                11.0: ('4.5*', '4.0*', '3.5*', '3.0*', '2.0*'),
-                10.0: ('4.0*', '3.5*', '3.0*', '2.0*'),
-                 9.0: ('3.5*', '3.0*', '2.0*')
-            }
 
             target_framework = _get_reg_value(
                 'VisualStudio\\SxS\\VC7',
                 'FrameworkVer32'
             )
 
-            if not target_framework:
-                import fnmatch
+            if target_framework:
+                if self._strict_net_version is not None:
+                    if target_framework[1:] == self._strict_net_version:
+                        self._version_32 = target_framework
+                        return self._version_32
+                elif self._minimum_net_version is not None:
+                    if target_framework[1:] >= self._strict_net_version:
+                        self._version_32 = target_framework
+                        return self._version_32
+                else:
+                    self._version_32 = target_framework
+                    return self._version_32
 
-                versions = list(
-                    key for key in _read_reg_keys('.NETFramework\\')
-                    if key.startswith('v')
-                )
+            versions = list(
+                key for key in _read_reg_keys('.NETFramework\\', True)
+                if key.startswith('v')
+            )
 
-                vc_version = float(int(self.vc_version.split('.')[0]))
+            target_framework = None
 
-                target_frameworks = target_frameworks[vc_version]
-                match = None
+            if self._strict_net_version is not None:
+                if 'v' + self._strict_net_version in versions:
+                    self._version_32 = 'v' + self._strict_net_version
+                    return self._version_32
+            else:
                 for version in versions:
-                    if self._strict_net_version is not None:
-                        if 'v' + self._strict_net_version == version:
-                            self._version_32 = 'v' + version
-                            return self._version_32
-
                     if self._minimum_net_version is not None:
-                        if (
-                            _get_higher_version(
-                                self._minimum_net_version,
-                                version[1:]
-                            ) == self._minimum_net_version and
-                            'v' + self._minimum_net_version != version
-                        ):
+                        if version[1:] < self._minimum_net_version:
                             continue
 
-                    for target_framework in target_frameworks:
-                        if fnmatch.fnmatch(version, 'v' + target_framework):
-                            if match is None:
-                                match = version[1:]
-                            else:
-                                match = _get_higher_version(match, version[1:])
+                    if target_framework is None:
+                        target_framework = version[1:]
+                    elif target_framework < version[1:]:
+                        target_framework = version[1:]
 
-                if match is not None:
-                    self._version_32 = 'v' + match
-                else:
+                if target_framework is not None:
+                    self._version_32 = 'v' + target_framework
+                    return self._version_32
+
+            net_path = os.path.join(
+                '%SystemRoot%',
+                'Microsoft.NET',
+                'Framework'
+            )
+            net_path = os.path.expandvars(net_path)
+            if os.path.exists(net_path):
+                versions = [item[1:] for item in os.listdir(net_path)]
+                if self._strict_net_version is not None:
+                    if self._strict_net_version in versions:
+                        self._version_32 = 'v' + self._strict_net_version
+                        return self._version_32
+
                     raise RuntimeError(
-                        'No Suitable .NET Framework found'
+                        'Unable to locate .NET version ' +
+                        self._strict_net_version
                     )
+
+                for version in versions:
+                    if (
+                        self._minimum_net_version is not None and
+                        version < self._minimum_net_version
+                    ):
+                        continue
+
+                    if target_framework is None:
+                        target_framework = version
+                    elif target_framework < version:
+                        target_framework = version
+
+                if target_framework:
+                    self._version_32 = 'v' + target_framework
+                    return self._version_32
+
+            if self._strict_net_version is not None:
+                raise RuntimeError(
+                    'Unable to locate .NET version ' +
+                    self._strict_net_version
+                )
+
+            if self._minimum_net_version is not None:
+                raise RuntimeError(
+                    'Unable to locate .NET version ' +
+                    self._minimum_net_version +
+                    ' or above.'
+                )
+
+            self._version_32 = ''
 
         return self._version_32
 
@@ -2620,10 +2895,10 @@ class NETInfo(object):
         """
 
         if self._version_64 is None:
+            target_framework = None
             installation = self.c_info.cpp_installation
 
             if installation is not None:
-                version = None
                 for package in installation.packages.msi:
                     if (
                         package.id.startswith('Microsoft.Net') and
@@ -2632,100 +2907,127 @@ class NETInfo(object):
 
                         if self._strict_net_version is not None:
                             if self._strict_net_version == package:
-                                self._version_32 = 'v' + package.version
-                                return self._version_32
-
-                        if self._minimum_net_version is not None:
-                            if self._minimum_net_version < package:
+                                self._version_64 = 'v' + package.version
+                                return self._version_64
+                            else:
                                 continue
 
-                        if version is None:
-                            version = package
-                        elif package > version:
-                            version = package
+                        if self._minimum_net_version is not None:
+                            if package < self._minimum_net_version:
+                                continue
 
-                if version is not None:
-                    self._version_64 = 'v' + version.version
+                        if target_framework is None:
+                            target_framework = package
+                        elif package > target_framework:
+                            target_framework = package
+
+                if target_framework is not None:
+                    self._version_64 = 'v' + target_framework.version
                     return self._version_64
 
             target_framework = _get_reg_value(
                 'VisualStudio\\SxS\\VC7',
                 'FrameworkVer64'
             )
-            if not target_framework:
-                target_framework = self.version_32
 
-            self._version_64 = target_framework
+            if target_framework:
+                if self._strict_net_version is not None:
+                    if target_framework[1:] == self._strict_net_version:
+                        self._version_64 = target_framework
+                        return self._version_64
+
+                elif self._minimum_net_version is not None:
+                    if target_framework[1:] >= self._strict_net_version:
+                        self._version_64 = target_framework
+                        return self._version_64
+
+                else:
+                    self._version_64 = target_framework
+                    return self._version_64
+
+            versions = list(
+                key for key in _read_reg_keys('.NETFramework\\', True)
+                if key.startswith('v')
+            )
+
+            target_framework = None
+
+            if self._strict_net_version is not None:
+                if 'v' + self._strict_net_version in versions:
+                    self._version_64 = 'v' + self._strict_net_version
+                    return self._version_64
+            else:
+                for version in versions:
+                    if self._minimum_net_version is not None:
+                        if version[1:] < self._minimum_net_version:
+                            continue
+
+                    if target_framework is None:
+                        target_framework = version[1:]
+                    elif target_framework < version[1:]:
+                        target_framework = version[1:]
+
+                if target_framework is not None:
+                    self._version_64 = 'v' + target_framework
+                    return self._version_64
+
+            net_path = os.path.join(
+                '%SystemRoot%',
+                'Microsoft.NET',
+                'Framework64'
+            )
+            net_path = os.path.expandvars(net_path)
+            if os.path.exists(net_path):
+                versions = [item[1:] for item in os.listdir(net_path)]
+                if self._strict_net_version is not None:
+                    if self._strict_net_version in versions:
+                        self._version_64 = 'v' + self._strict_net_version
+                        return self._version_64
+
+                    raise RuntimeError(
+                        'Unable to locate .NET version ' +
+                        self._strict_net_version
+                    )
+
+                for version in versions:
+                    if (
+                        self._minimum_net_version is not None and
+                        version < self._minimum_net_version
+                    ):
+                        continue
+
+                    if target_framework is None:
+                        target_framework = version
+                    elif target_framework < version:
+                        target_framework = version
+
+                if target_framework:
+                    self._version_64 = 'v' + target_framework
+                    return self._version_64
+
+            if self._strict_net_version is not None:
+                raise RuntimeError(
+                    'Unable to locate .NET version ' +
+                    self._strict_net_version
+                )
+
+            if self._minimum_net_version is not None:
+                raise RuntimeError(
+                    'Unable to locate .NET version ' +
+                    self._minimum_net_version +
+                    ' or above.'
+                )
+
+            self._version_64 = ''
 
         return self._version_64
 
     @property
     def directory(self) -> str:
         if self.platform == 'x64':
-
-            directory = self.directory_64
-            version = self.version_64
+            return self.directory_64
         else:
-            directory = self.directory_32
-            version = self.version_32
-
-        framework_path = os.path.join(
-            directory,
-            version
-        )
-
-        if os.path.exists(framework_path):
-            return framework_path
-
-        major = version.split('.')[0][1:]
-        minor = version.split('.')[1]
-
-        possible_matches = []
-
-        for file in os.listdir(directory):
-            if not file.startswith('v' + major):
-                continue
-
-            if file.startswith('v' + major + '.' + minor):
-                try:
-                    possible_matches.append(
-                        tuple(int(item) for item in file[1:].split('.'))
-                    )
-                except:  # NOQA
-                    pass
-            elif file.startswith('v' + major + '.0'):
-                try:
-                    possible_matches.append(
-                        tuple(int(item) for item in file[1:].split('.'))
-                    )
-                except:  # NOQA
-                    pass
-
-        match = None
-
-        for poss in possible_matches:
-            if match is None:
-                match = poss
-            else:
-                if len(match) >= len(poss):
-                    for i, item in enumerate(poss):
-                        if item < match[i]:
-                            break
-                    else:
-                        match = poss
-                else:
-                    for i, item in enumerate(match):
-                        if poss[i] < item:
-                            break
-                    else:
-                        match = poss
-
-        if match is not None:
-            match = 'v' + '.'.join(str(item) for item in match)
-            framework_path = os.path.join(directory, match)
-            return framework_path
-
-        return ''
+            return self.directory_32
 
     @property
     def directory_32(self) -> str:
@@ -2737,15 +3039,20 @@ class NETInfo(object):
             'VisualStudio\\SxS\\VC7\\',
             'FrameworkDir32'
         )
-
-        if directory is None:
-            return os.path.join(
-                os.environ.get('WINDIR', r'C:\Windows'),
+        if not directory:
+            directory = os.path.join(
+                '%SystemRoot%',
                 'Microsoft.NET',
                 'Framework'
             )
+            directory = os.path.expandvars(directory)
+        else:
+            directory = directory[:-1]
 
-        return directory[:-1]
+        if os.path.exists(directory):
+            return directory
+
+        return ''
 
     @property
     def directory_64(self) -> str:
@@ -2753,16 +3060,25 @@ class NETInfo(object):
         .NET 64bit path
         :return: path to x64 .NET
         """
-        guess_fw = os.path.join(
-            os.environ.get('WINDIR', r'C:\Windows'),
-            'Microsoft.NET',
-            'Framework64'
-        )
 
-        return (
-            _get_reg_value('VisualStudio\\SxS\\VC7\\', 'FrameworkDir64') or
-            guess_fw
+        directory = _get_reg_value(
+            'VisualStudio\\SxS\\VC7\\',
+            'FrameworkDir64'
         )
+        if not directory:
+            directory = os.path.join(
+                '%SystemRoot%',
+                'Microsoft.NET',
+                'Framework64'
+            )
+            directory = os.path.expandvars(directory)
+        else:
+            directory = directory[:-1]
+
+        if os.path.exists(directory):
+            return directory
+
+        return ''
 
     @property
     def preferred_bitness(self) -> str:
@@ -2791,21 +3107,7 @@ class NETInfo(object):
                 key = key.replace(net_fx_key, 'WinSDKNetFxTools')
 
             keys = (key,)
-
-        elif ver in (14.0, 15.0):
-            keys = (
-                'Microsoft SDKs\\NETFXSDK\\3.5*\\' + net_fx_key,
-                'Microsoft SDKs\\NETFXSDK\\4.0*\\' + net_fx_key,
-                'Microsoft SDKs\\NETFXSDK\\4.5*\\' + net_fx_key,
-                'Microsoft SDKs\\NETFXSDK\\4.6*\\' + net_fx_key,
-                'Microsoft SDKs\\Windows\\v8.1\\' + net_fx_key
-            )
-            if ver == 15.0:
-                keys = (
-                    'Microsoft SDKs\\NETFXSDK\\4.7*\\' + net_fx_key,
-                ) + keys
-
-        elif ver == 16.0:
+        else:
             keys = (
                 'Microsoft SDKs\\NETFXSDK\\3.5*\\' + net_fx_key,
                 'Microsoft SDKs\\NETFXSDK\\4.0*\\' + net_fx_key,
@@ -2814,12 +3116,8 @@ class NETInfo(object):
                 'Microsoft SDKs\\NETFXSDK\\4.7*\\' + net_fx_key,
                 'Microsoft SDKs\\NETFXSDK\\4.8*\\' + net_fx_key,
                 'Microsoft SDKs\\NETFXSDK\\4.6*\\' + net_fx_key,
+                'Microsoft SDKs\\Windows\\v8.1\\' + net_fx_key,
                 'Microsoft SDKs\\Windows\\v10.0\\' + net_fx_key,
-                'Microsoft SDKs\\Windows\\v11.0\\' + net_fx_key
-            )
-        else:
-            raise RuntimeError(
-                'This package does not support VC version ' + str(ver)
             )
 
         for key in keys:
@@ -2838,7 +3136,7 @@ class NETInfo(object):
                     'InstallationFolder'
                 )
                 if val:
-                    yield key
+                    yield val
 
     @property
     def netfx_sdk_directory(self) -> Optional[str]:
@@ -2864,7 +3162,7 @@ class NETInfo(object):
         return '__DOTNET_ADD_{0}BIT'.format(self.preferred_bitness)
 
     @property
-    def net_tools(self) -> str:
+    def net_tools(self) -> list:
 
         version = float(int(self.vc_version.split('.')[0]))
         if version <= 10.0:
@@ -2939,7 +3237,37 @@ class NETInfo(object):
 
     @property
     def path(self) -> list:
-        path = self.lib_path
+        path = []
+        directory = self.directory
+
+        pth = os.path.join(
+            directory,
+            self.version
+        )
+
+        if os.path.exists(pth):
+            path += [pth]
+        else:
+            match = None
+            version = self.version
+            versions = [
+                item[1:] for item in os.listdir(directory)
+                if item.startswith('v')
+            ]
+            for v in versions:
+                if version > v:
+                    if match is None:
+                        match = v
+                    elif v > match:
+                        match = v
+
+            if match is not None:
+                pth = os.path.join(
+                    directory,
+                    'v' + match
+                )
+                path += [pth]
+
         net_fx_tools = self.net_fx_tools_directory
         if net_fx_tools:
             path += [net_fx_tools]
@@ -2995,14 +3323,14 @@ class NETInfo(object):
             if directory_64:
                 directory_64 += '\\'
 
-            env['FrameworkDIR64'] = directory_64
+            env['FrameworkDir64'] = directory_64
             env['FrameworkVersion64'] = self.version_64
         else:
             directory_32 = self.directory_32
             if directory_32:
                 directory_32 += '\\'
 
-            env['FrameworkDIR32'] = directory_32
+            env['FrameworkDir32'] = directory_32
             env['FrameworkVersion32'] = self.version_32
 
         framework = env['FrameworkVersion'][1:].split('.')[:2]
@@ -3019,16 +3347,56 @@ class NETInfo(object):
 
 
 def setup_environment(
-    strict_c_version: Optional[Union[int, float]] = None,
     minimum_c_version: Optional[Union[int, float]] = None,
-    strict_toolkit_version: Optional[int] = None,
+    strict_c_version: Optional[Union[int, float]] = None,
     minimum_toolkit_version: Optional[int] = None,
+    strict_toolkit_version: Optional[int] = None,
     minimum_sdk_version: Optional[str] = None,
     strict_sdk_version: Optional[str] = None,
     minimum_net_version: Optional[str] = None,
     strict_net_version: Optional[str] = None
 ):
-    print('Setting up Windows build environment, please wait.....')
+    """
+    Main entry point.
+
+    :param minimum_c_version: The lowest MSVC compiler version to allow.
+    :type minimum_c_version: int, float
+
+    :param strict_c_version: The MSVC compiler version that MUST be used.
+      ie 14.0, 14.2
+    :type strict_c_version: int or float
+
+    :param minimum_toolkit_version: The lowest build tools version to allow.
+    :type minimum_toolkit_version: int
+
+    :param strict_toolkit_version: The build tools version that MUST be used.
+      ie 142, 143
+    :type strict_toolkit_version: int
+
+    :param minimum_sdk_version: The lowest SDK version to allow.
+      This can work several ways, if you want to specify a specific version as
+      the minimum `"10.0.22000.0"` or if you want to make sure that only
+      Windows 10 SDK's get used `"10.0"`
+    :type minimum_sdk_version: str
+
+    :param strict_sdk_version: The Windows SDK that MUST be used.
+      Whole version only.
+    :type strict_sdk_version: str
+
+    :param minimum_net_version: Works the same as minimum_sdk_version
+    :type minimum_net_version: str
+
+    :param strict_net_version: works the same as strict_sdk_version
+    :type strict_net_version: str
+
+    :return: Environment instance
+    :rtype: Environment
+    """
+    import distutils.log
+
+    distutils.log.debug(
+        'Setting up Windows build environment, please wait.....'
+    )
 
     #
     # if python_info.architecture == 'x64':
@@ -3056,17 +3424,17 @@ def setup_environment(
             )
 
     environment = Environment(
-        strict_c_version,
         minimum_c_version,
-        strict_toolkit_version,
+        strict_c_version,
         minimum_toolkit_version,
+        strict_toolkit_version,
         minimum_sdk_version,
         strict_sdk_version,
         minimum_net_version,
         strict_net_version
     )
 
-    print(environment)
+    distutils.log.debug(str(environment))
 
     for key, value in environment.build_environment.items():
         os.environ[key] = value
@@ -3082,7 +3450,9 @@ if windows:
         #     PROGRAM_FILES_X86 += ' (x86)'
 
         envr = setup_environment()
-        print('\n')
+        print(envr)
+        print()
+        print()
         print('SET ENVIRONMENT VARIABLES')
         print('------------------------------------------------')
         print()
