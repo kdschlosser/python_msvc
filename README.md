@@ -35,7 +35,7 @@ Both parameters accept either None or a float that is the version number fo the 
 
 Python recommends that any extensions that are compiled on Windows should be compiled with the same MSVC version
 that was used to compile Python. This is due to incompatibilities in the common runtime language between the 
-compiler versions. You may or may not experience any issues if you do not use the ame compiler version. Your extension 
+compiler versions. You may or may not experience any issues if you do not use the same compiler version. Your extension 
 would have to use that portion of the CLR in order to have an issue. This is why it is a recommendation.
 
 
@@ -43,7 +43,7 @@ Python versions 3.9 and 3.10 use MSVC Version 14.2
 Python versions 3.5, 3.6, 3.7, 3.8 use any of the MSVC compiler version 14.x 
 Python version 3.4 uses MSVC compiler version 10.0
 
-If you would like to have the above done for you automatically and have the environment set up. Yuo can use 
+If you would like to have the above done for you automatically and have the environment set up. You can use 
 `environment = pyMSVC.setup_environment()`. This will rise an exception if the msvc version that is needed based on the 
 python version is not found. This will set up the environment for you as well without the need for any additional steps.
 
