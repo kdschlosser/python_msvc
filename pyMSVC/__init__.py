@@ -133,6 +133,7 @@ def _get_file_version(filename):
         ffi.dwFileVersionLS & 0xFFFF,
     )
 
+
 if windows:
     CSIDL_PROGRAM_FILES = 0x26
     CSIDL_PROGRAM_FILESX86 = 0x2A
@@ -3254,12 +3255,12 @@ class NETInfo(object):
                 item[1:] for item in os.listdir(directory)
                 if item.startswith('v')
             ]
-            for v in versions:
-                if version > v:
+            for ver in versions:
+                if version > ver:
                     if match is None:
-                        match = v
-                    elif v > match:
-                        match = v
+                        match = ver
+                    elif ver > match:
+                        match = ver
 
             if match is not None:
                 pth = os.path.join(
