@@ -14,5 +14,6 @@ setup(
         'Tired of having a new visual studio version break your setup program?\n'
         'This  library is the solution.'
     ),
-    license='MIT'
+    license='MIT',
+    install_requires=["comtypes"],
 )
