@@ -98,7 +98,7 @@ class InstanceState(ENUM):
 
     @property
     def value(self):
-        print(dir(ENUM.value))
+        # noinspection PyUnresolvedReferences
         value = ENUM.value.__get__(self)
         if value == self.eComplete:
             return ['local', 'registered', 'no reboot required']
