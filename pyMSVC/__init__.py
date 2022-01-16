@@ -3569,10 +3569,6 @@ def setup_environment(
         'Setting up Windows build environment, please wait.....'
     )
 
-    #
-    # if python_info.architecture == 'x64':
-    #     PROGRAM_FILES_X86 += ' (x86)'
-
     python_version = sys.version_info[:2]
     if minimum_c_version is None:
         if python_version == (3, 10):
@@ -3617,11 +3613,6 @@ def setup_environment(
 if __name__ == '__main__':
     distutils.log.set_threshold(distutils.log.DEBUG)
 
-    python_info = PythonInfo()
-
-    # if python_info.architecture == 'x64':
-    #     PROGRAM_FILES_X86 += ' (x86)'
-
     # build tools   2019 '16.10.31515.178'  '16.10.4'
     # visual studio 2019 '16.11.31729.503'  '16.11.5'
 
@@ -3639,6 +3630,3 @@ if __name__ == '__main__':
 
         print(k + ':', v)
         print()
-
-else:
-    python_info = PythonInfo()
