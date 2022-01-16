@@ -40,12 +40,13 @@ import subprocess
 import distutils.log
 from typing import Optional, Union
 
-import platform
-
-windows = 'Windows' in platform.platform()
+windows = sys.platform.startswith('win')
 
 if windows:
-    from . import vswhere
+    try:
+        from . import vswhere
+    except ImportError:
+        import vswhere
 
     from ctypes import HRESULT
     from ctypes.wintypes import (
