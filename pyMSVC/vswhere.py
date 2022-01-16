@@ -50,7 +50,6 @@ from comtypes import (
     IUnknown,
     HRESULT,
     BSTR,
-    COMObject,
 )
 from comtypes._safearray import (  # NOQA
     SAFEARRAY,
@@ -92,8 +91,47 @@ class InstanceState(ENUM):
     eRegistered = 2
     # No reboot is required for the instance.
     eNoRebootRequired = 4
+    # do not know what this bit does
+    eUnknown = 8
     # The instance represents a complete install.
     eComplete = MAXUINT
+
+    @property
+    def value(self):
+        print(dir(ENUM.value))
+        value = ENUM.value.__get__(self)
+        if value == self.eComplete:
+            return ['local', 'registered', 'no reboot required']
+        if value == self.eNone:
+            return ['remote', 'unregistered', 'reboot required']
+
+        res = []
+
+        if value | self.eLocal == value:
+            res += ['local']
+        else:
+            res += ['remote']
+        if value | self.eRegistered == value:
+            res += ['registered']
+        else:
+            res += ['unregistered']
+        if value | self.eNoRebootRequired == value:
+            res += ['no reboot required']
+        else:
+            res += ['reboot required']
+
+        if value | self.eUnknown == value:
+            res.append('unknown flag set')
+
+        return res
+
+
+eNone = InstanceState.eNone
+eLocal = InstanceState.eLocal
+eRegistered = InstanceState.eRegistered
+eNoRebootRequired = InstanceState.eNoRebootRequired
+eUnknown = InstanceState.eUnknown
+eComplete = InstanceState.eComplete
 
 
 class Packages(object):
@@ -109,9 +147,10 @@ class Packages(object):
 
         def _add(items):
             for item in items:
-                res.append(
-                    '\n'.join('    ' + line for line in str(item).split('\n'))
-                )
+                res.append('\n'.join(
+                    '    ' + line
+                    for line in str(item).split('\n')
+                ))
                 res.append('')
 
         res.append('vsix:')
@@ -195,9 +234,10 @@ class Packages(object):
     def other(self):
         return [
             package for package in self
-            if package.type not in
-               ('Exe', 'Msi', 'Product', 'Vsix',
-                'Group', 'Component', 'Workload', 'Msu')
+            if package.type not in (
+                'Exe', 'Msi', 'Product', 'Vsix',
+                'Group', 'Component', 'Workload', 'Msu'
+            )
         ]
 
 
@@ -271,38 +311,47 @@ class ISetupPackageReference(IUnknown):
 
     @property
     def name(self):
+        # noinspection PyUnresolvedReferences
         return self.GetId()
 
     @property
     def id(self):
+        # noinspection PyUnresolvedReferences
         return self.GetId()
 
     @property
     def version(self):
+        # noinspection PyUnresolvedReferences
         return self.GetVersion()
 
     @property
     def chip(self):
+        # noinspection PyUnresolvedReferences
         return self.GetChip()
 
     @property
     def language(self):
+        # noinspection PyUnresolvedReferences
         return self.GetLanguage()
 
     @property
     def branch(self):
+        # noinspection PyUnresolvedReferences
         return self.GetBranch()
 
     @property
     def type(self):
+        # noinspection PyUnresolvedReferences
         return self.GetType()
 
     @property
     def unique_id(self):
+        # noinspection PyUnresolvedReferences
         return self.GetUniqueId()
 
     @property
     def is_extension(self):
+        # noinspection PyUnresolvedReferences
         return self.GetIsExtension()
 
     def __str__(self):
@@ -353,23 +402,27 @@ class ISetupInstance(IUnknown):
 
     @property
     def id(self):
+        # noinspection PyUnresolvedReferences
         return self.GetInstanceId()
 
     @property
     def install_date(self):
+        # noinspection PyUnresolvedReferences
         return self.GetInstallDate()
 
     @property
     def name(self):
+        # noinspection PyUnresolvedReferences
         return self.GetInstallationName()
 
     @property
     def path(self):
-        # if InstanceState.eLocal & self.state == InstanceState.eLocal:
+        # noinspection PyUnresolvedReferences
         return self.GetInstallationPath()
 
     @property
     def version(self):
+        # noinspection PyUnresolvedReferences
         return self.GetInstallationVersion()
 
     @property
@@ -380,6 +433,7 @@ class ISetupInstance(IUnknown):
     @property
     def display_name(self):
         try:
+            # noinspection PyUnresolvedReferences
             return self.GetDisplayName()
         except OSError:
             pass
@@ -387,6 +441,7 @@ class ISetupInstance(IUnknown):
     @property
     def description(self):
         try:
+            # noinspection PyUnresolvedReferences
             return self.GetDescription()
         except OSError:
             pass
@@ -414,10 +469,12 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def packages(self) -> Packages:
+        # noinspection PyUnresolvedReferences
         safearray = self.GetPackages()
 
         SafeArrayLock(safearray)
 
+        # noinspection PyTypeChecker
         packs = comtypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupPackageReference))
@@ -436,6 +493,7 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def properties(self):
+        # noinspection PyUnresolvedReferences
         return self.GetProperties()
 
     @property
@@ -449,19 +507,23 @@ class ISetupInstance2(ISetupInstance):
         unique_id
         is_extension
         """
-        if InstanceState.eRegistered & self.state == InstanceState.eRegistered:
+        if 'registered' in self.state:
+            # noinspection PyUnresolvedReferences
             return self.GetProduct()
 
     @property
     def state(self):
+        # noinspection PyUnresolvedReferences
         return self.GetState().value
 
     @property
     def product_path(self):
+        # noinspection PyUnresolvedReferences
         return self.GetProductPath()
 
     @property
     def errors(self):
+        # noinspection PyUnresolvedReferences
         errors = self.GetErrors()
         try:
             return errors.QueryInterface(ISetupErrorState2)
@@ -470,10 +532,12 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def is_launchable(self):
+        # noinspection PyUnresolvedReferences
         return self.IsLaunchable()
 
     @property
     def is_complete(self):
+        # noinspection PyUnresolvedReferences
         return self.IsComplete()
 
     @property
@@ -487,6 +551,7 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def engine_path(self):
+        # noinspection PyUnresolvedReferences
         return self.GetEnginePath()
 
     @property
@@ -518,19 +583,24 @@ class ISetupInstance2(ISetupInstance):
 
         return res.format(
             errors='\n'.join(
-                '    ' + line for line in str(self.errors).split('\n')
+                '    ' + line
+                for line in str(self.errors).split('\n')
             ),
             product='\n'.join(
-                '    ' + line for line in str(self.product).split('\n')
+                '    ' + line
+                for line in str(self.product).split('\n')
             ),
             packages='\n'.join(
-                '    ' + line for line in str(self.packages).split('\n')
+                '    ' + line
+                for line in str(self.packages).split('\n')
             ),
             properties='\n'.join(
-                '    ' + line for line in str(self.properties).split('\n')
+                '    ' + line
+                for line in str(self.properties).split('\n')
             ),
             catalog='\n'.join(
-                '    ' + line for line in str(self.catalog).split('\n')
+                '    ' + line
+                for line in str(self.catalog).split('\n')
             )
         )
 
@@ -633,6 +703,7 @@ class ISetupInstanceCatalog(IUnknown):
                 return prop.value
 
     def __iter__(self):
+        # noinspection PyUnresolvedReferences
         for prop in self.GetCatalogInfo():
             yield prop
 
@@ -659,6 +730,7 @@ class IEnumSetupInstances(IUnknown):
     def __iter__(self):
         while True:
             try:
+                # noinspection PyUnresolvedReferences
                 set_instance, num = self.Next(1)
                 yield set_instance
 
@@ -680,6 +752,7 @@ class ISetupConfiguration(IUnknown):
             return self
 
     def __iter__(self):
+        # noinspection PyUnresolvedReferences
         setup_enum = self.EnumInstances()
         helper = self.QueryInterface(ISetupHelper)
 
@@ -698,6 +771,7 @@ class ISetupConfiguration2(ISetupConfiguration):
     _iid_ = IID_ISetupConfiguration2
 
     def __iter__(self):
+        # noinspection PyUnresolvedReferences
         setup_enum = self.EnumAllInstances()
         helper = self.QueryInterface(ISetupHelper)
 
@@ -725,12 +799,14 @@ class ISetupErrorState(IUnknown):
     @property
     def failed_packages(self) -> Packages:
         try:
+            # noinspection PyUnresolvedReferences
             safearray = self.GetFailedPackages()
         except ValueError:
             return Packages([])
 
         SafeArrayLock(safearray)
 
+        # noinspection PyTypeChecker
         packs = comtypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupFailedPackageReference))
@@ -751,12 +827,14 @@ class ISetupErrorState(IUnknown):
     @property
     def skipped_packages(self) -> Packages:
         try:
+            # noinspection PyUnresolvedReferences
             safearray = self.GetSkippedPackages()
         except ValueError:
             return Packages([])
 
         SafeArrayLock(safearray)
 
+        # noinspection PyTypeChecker
         packs = comtypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupFailedPackageReference))
@@ -776,20 +854,16 @@ class ISetupErrorState(IUnknown):
 
     def __str__(self):
         res = ['failed packages: ']
-        res.extend(
-            [
-                '    ' + line for line in
-                str(self.failed_packages).split('\n')
-            ]
-        )
+        res.extend([
+            '    ' + line for line in
+            str(self.failed_packages).split('\n')
+        ])
 
         res += ['skipped packages: ']
-        res.extend(
-            [
-                '    ' + line for line in
-                str(self.skipped_packages).split('\n')
-            ]
-        )
+        res.extend([
+            '    ' + line for line in
+            str(self.skipped_packages).split('\n')
+        ])
 
         return '\n'.join(res)
 
@@ -803,10 +877,12 @@ class ISetupErrorState2(ISetupErrorState):
 
     @property
     def error_log_file_path(self):
+        # noinspection PyUnresolvedReferences
         return self.GetErrorLogFilePath()
 
     @property
     def log_file_path(self):
+        # noinspection PyUnresolvedReferences
         return self.GetLogFilePath()
 
     def __str__(self):
@@ -865,6 +941,7 @@ class ISetupPropertyStore(IUnknown):
 
     @property
     def names(self):
+        # noinspection PyUnresolvedReferences
         safearray = self.GetNames()
 
         SafeArrayLock(safearray)
@@ -882,6 +959,7 @@ class ISetupPropertyStore(IUnknown):
 
     def __iter__(self):
         for n in self.names:
+            # noinspection PyUnresolvedReferences
             yield Property(n, self.GetValue(n))
 
     def __str__(self):
@@ -899,6 +977,7 @@ class ISetupLocalizedPropertyStore(IUnknown):
 
     @property
     def names(self):
+        # noinspection PyUnresolvedReferences
         safearray = self.GetNames()
 
         SafeArrayLock(safearray)
@@ -916,6 +995,7 @@ class ISetupLocalizedPropertyStore(IUnknown):
 
     def __iter__(self):
         for n in self.names:
+            # noinspection PyUnresolvedReferences
             yield Property(n, self.GetValue(n))
 
     def __str__(self):
@@ -1049,6 +1129,7 @@ ISetupInstance._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 ISetupInstance2._methods_ = [
     # Gets the state of the instance.
     COMMETHOD(
@@ -1117,6 +1198,7 @@ ISetupInstance2._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 ISetupInstanceCatalog._methods_ = [
     # Gets catalog information properties.
     COMMETHOD(
@@ -1134,6 +1216,7 @@ ISetupInstanceCatalog._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 ISetupLocalizedProperties._methods_ = [
     # Gets localized product-specific properties.
     COMMETHOD(
@@ -1159,6 +1242,7 @@ ISetupLocalizedProperties._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 IEnumSetupInstances._methods_ = [
     # Retrieves the next set of product instances in the
     # enumeration sequence.
@@ -1194,6 +1278,7 @@ IEnumSetupInstances._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 ISetupConfiguration._methods_ = [
     # Enumerates all completed product instances installed.
     COMMETHOD(
@@ -1219,6 +1304,7 @@ ISetupConfiguration._methods_ = [
     )
 ]
 
+# noinspection PyTypeChecker
 ISetupConfiguration2._methods_ = [
     # Enumerates all product instances.
     COMMETHOD(
@@ -1376,6 +1462,8 @@ class SetupConfiguration(IUnknown):
 
     # Gets an ISetupConfiguration that provides information about
     # product instances installed on the machine.
+
+    # noinspection PyTypeChecker
     _methods_ = [
         COMMETHOD(
             [],

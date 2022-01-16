@@ -37,6 +37,7 @@ import os
 import sys
 import ctypes
 import subprocess
+import distutils.log
 from typing import Optional, Union
 
 import platform
@@ -343,7 +344,8 @@ class Environment(object):
         minimum_sdk_version: Optional[str] = None,
         strict_sdk_version: Optional[str] = None,
         minimum_net_version: Optional[str] = None,
-        strict_net_version: Optional[str] = None
+        strict_net_version: Optional[str] = None,
+        vs_version: Optional[Union[str, int]] = None
     ):
         self.python = PythonInfo()
 
@@ -353,6 +355,7 @@ class Environment(object):
             strict_c_version,
             minimum_toolkit_version,
             strict_toolkit_version,
+            vs_version
         )
 
         self.visual_studio = VisualStudioInfo(
@@ -494,116 +497,21 @@ class Environment(object):
         template = (
             'Machine architecture: {machine_architecture}\n'
             'Build architecture: {architecture}\n'
-            '\n'
-            '== Windows SDK ================================================\n'
-            '   version:     {target_platform}\n'
-            '   sdk version: {windows_sdk_version}\n'
-            '   path:        {target_platform_path}\n'
-            '\n'
-            '   -- Universal CRT -------------------------------------------\n'
-            '      version: {ucrt_version}\n'
-            '      path: {ucrt_sdk_directory}\n'
-            '      lib directory: {ucrt_lib_directory}\n'
-            '      headers directory: {ucrt_headers_directory}\n'
-
-            '   -- ATLMFC --------------------------------------------------\n'
-            '      path:         {atlmfc_path}\n'
-            '      include path: {atlmfc_include_path}\n'
-            '      lib path:     {atlmfc_lib_path}\n'
-            '\n'
-            '== Extension SDK ==============================================\n'
-            '   path: {extension_sdk_directory}\n'
-            '\n'
-            '== TypeScript =================================================\n'
-            '   path: {type_script_path}\n'
-            '\n'
-            '== HTML Help ==================================================\n'
-            '   path: {html_help_path}\n'
-            '\n'
-            '== .NET =======================================================\n'
-            '   version:    {target_framework}\n'
-            '\n'
-            '   -- x86 -----------------------------------------------------\n'
-            '      version: {framework_version_32}\n'
-            '      path:    {framework_dir_32}\n'
-            '   -- x64 -----------------------------------------------------\n'
-            '      version: {framework_version_64}\n'
-            '      path:    {framework_dir_64}\n'
-            '   -- NETFX ---------------------------------------------------\n'
-            '      path:         {net_fx_tools_directory}\n'
-            '      x86 exe path: {executable_path_x86}\n'
-            '      x64 exe path: {executable_path_x64}\n'
-            '\n'
-            '== Visual C ===================================================\n'
-            '   version: {visual_c_version}\n'
-            '   path:    {visual_c_path}\n'
-            '\n'
-            '   -- Tools ---------------------------------------------------\n'
-            '      version:     {tools_version}\n'
-            '      path:        {tools_install_path}\n'
-            '      redist path: {vc_tools_redist_path}\n'
-            '   -- F# ------------------------------------------------------\n'
-            '      path: {f_sharp_path}\n'
-            '   -- DLL -----------------------------------------------------\n'
-            '      version: {platform_toolset}-{msvc_dll_version}\n'
-            '      path:    {msvc_dll_path}\n'
-            '\n'
-            '== MSBuild ====================================================\n'
-            '   version: {msbuild_version}\n'
-            '   path:    {msbuild_path}\n'
-            '\n'
-            '== Python =====================================================\n'
-            '  version: {py_version}\n'
-            '  architecture: {py_architecture}\n'
-            '  library: {py_dependency}\n'
-            '  libs: {py_libraries}\n'
-            '  includes: {py_includes}\n'
-            '\n'
         )
 
-        res = template.format(
-            machine_architecture=self.machine_architecture,
-            architecture=self.platform,
-            target_platform=self.windows_sdk.version,
-            windows_sdk_version=self.windows_sdk.sdk_version,
-            target_platform_path=self.windows_sdk.directory,
-            target_framework=self.dot_net.version,
-            framework_version_32=self.dot_net.version_32,
-            framework_dir_32=self.dot_net.directory_32,
-            framework_version_64=self.dot_net.version_64,
-            framework_dir_64=self.dot_net.directory_64,
-            visual_c_version=self.visual_c.version,
-            visual_c_path=self.visual_c.install_directory,
-            tools_version=self.visual_c.tools_version,
-            tools_install_path=self.visual_c.tools_install_directory,
-            vc_tools_redist_path=self.visual_c.tools_redist_directory,
-            platform_toolset=self.visual_c.toolset_version,
-            msvc_dll_version=self.visual_c.msvc_dll_version,
-            msvc_dll_path=self.visual_c.msvc_dll_path,
-            msbuild_version=self.visual_c.msbuild_version,
-            msbuild_path=self.visual_c.msbuild_path,
-            py_version=self.python.version,
-            py_architecture=self.python.architecture,
-            py_dependency=self.python.dependency,
-            py_libraries=self.python.libraries,
-            py_includes=self.python.includes,
-            f_sharp_path=self.visual_c.f_sharp_path,
-            html_help_path=self.visual_c.html_help_path,
-            atlmfc_lib_path=self.visual_c.atlmfc_lib_path,
-            atlmfc_include_path=self.visual_c.atlmfc_include_path,
-            atlmfc_path=self.visual_c.atlmfc_path,
-            extension_sdk_directory=self.windows_sdk.extension_sdk_directory,
-            ucrt_sdk_directory=self.windows_sdk.ucrt_sdk_directory,
-            ucrt_headers_directory=self.windows_sdk.ucrt_headers_directory,
-            ucrt_lib_directory=self.windows_sdk.ucrt_lib_directory,
-            ucrt_version=self.windows_sdk.ucrt_version,
-            type_script_path=self.windows_sdk.type_script_path,
-            net_fx_tools_directory=self.dot_net.net_fx_tools_directory,
-            executable_path_x64=self.dot_net.executable_path_x64,
-            executable_path_x86=self.dot_net.executable_path_x86,
-        )
+        res = [
+            template.format(
+                machine_architecture=self.machine_architecture,
+                architecture=self.platform
+            ),
+            str(self.python),
+            str(self.visual_studio),
+            str(self.visual_c),
+            str(self.windows_sdk),
+            str(self.dot_net),
+        ]
 
-        return res
+        return '\n'.join(res)
 
 
 # I have separated the environment into several classes
@@ -660,6 +568,23 @@ class PythonInfo(object):
                 python_libs += [os.path.join(root, d)]
         return python_libs
 
+    def __str__(self):
+        template = (
+            '== Python =====================================================\n'
+            '  version: {py_version}\n'
+            '  architecture: {py_architecture}\n'
+            '  library: {py_dependency}\n'
+            '  libs: {py_libraries}\n'
+            '  includes: {py_includes}\n'
+        )
+        return template.format(
+            py_version=self.version,
+            py_architecture=self.architecture,
+            py_dependency=self.dependency,
+            py_libraries=self.libraries,
+            py_includes=self.includes
+        )
+
 
 class VisualCInfo(object):
 
@@ -669,7 +594,8 @@ class VisualCInfo(object):
         minimum_c_version: Optional[Union[int, float]] = None,
         strict_c_version: Optional[Union[int, float]] = None,
         minimum_toolkit_version: Optional[int] = None,
-        strict_toolkit_version: Optional[int] = None
+        strict_toolkit_version: Optional[int] = None,
+        vs_version: Optional[Union[str, int]] = None
     ):
         self.environment = environ
         self.platform = environ.platform
@@ -742,7 +668,34 @@ class VisualCInfo(object):
 
             cpp_version = None
             cpp_installation = None
+
             for installation in _vswhere:
+
+                distutils.log.debug(str(installation) + '\n\n')
+
+                if vs_version is not None:
+                    try:
+                        if isinstance(vs_version, str):
+                            display_version = str(
+                                installation.catalog.product_display_version
+                            )
+
+                            if (
+                                installation.version != vs_version and
+                                display_version != vs_version
+                            ):
+                                continue
+                        else:
+                            product_line_version = int(
+                                installation.catalog.product_line_version
+                            )
+
+                            if product_line_version != vs_version:
+                                continue
+
+                    except:  # NOQA
+                        continue
+
                 for package in installation.packages.vsix:
                     if package.id == cpp_id:
                         if (
@@ -1808,6 +1761,53 @@ class VisualCInfo(object):
                     value = os.pathsep.join(value)
                 yield key, str(value)
 
+    def __str__(self):
+        template = (
+            '== Visual C ===================================================\n'
+            '   version: {visual_c_version}\n'
+            '   path:    {visual_c_path}\n'
+            '\n'
+            '   -- Tools ---------------------------------------------------\n'
+            '      version:     {tools_version}\n'
+            '      path:        {tools_install_path}\n'
+            '      redist path: {vc_tools_redist_path}\n'
+            '   -- F# ------------------------------------------------------\n'
+            '      path: {f_sharp_path}\n'
+            '   -- DLL -----------------------------------------------------\n'
+            '      version: {platform_toolset}-{msvc_dll_version}\n'
+            '      path:    {msvc_dll_path}\n'
+            '\n'
+            '== MSBuild ====================================================\n'
+            '   version: {msbuild_version}\n'
+            '   path:    {msbuild_path}\n'
+            '\n'
+            '== HTML Help ==================================================\n'
+            '   path: {html_help_path}\n'
+            '\n'
+            '== ATLMFC =====================================================\n'
+            '   path:         {atlmfc_path}\n'
+            '   include path: {atlmfc_include_path}\n'
+            '   lib path:     {atlmfc_lib_path}\n'
+        )
+
+        return template.format(
+            visual_c_version=self.version,
+            visual_c_path=self.install_directory,
+            tools_version=self.tools_version,
+            tools_install_path=self.tools_install_directory,
+            vc_tools_redist_path=self.tools_redist_directory,
+            platform_toolset=self.toolset_version,
+            msvc_dll_version=self.msvc_dll_version,
+            msvc_dll_path=self.msvc_dll_path,
+            msbuild_version=self.msbuild_version,
+            msbuild_path=self.msbuild_path,
+            f_sharp_path=self.f_sharp_path,
+            html_help_path=self.html_help_path,
+            atlmfc_lib_path=self.atlmfc_lib_path,
+            atlmfc_include_path=self.atlmfc_include_path,
+            atlmfc_path=self.atlmfc_path,
+        )
+
 
 class VisualStudioInfo(object):
 
@@ -1825,7 +1825,11 @@ class VisualStudioInfo(object):
 
         installation = c_info.cpp_installation
 
+        self.__name__ = 'VisualStudioInfo'
+
         if installation is not None:
+            if installation.path.endswith('BuildTools'):
+                self.__name__ = 'BuildToolsInfo'
             version = installation.version.split('.')[0]
             self.__devenv_version = (
                 str(float(int(version))),
@@ -1837,7 +1841,8 @@ class VisualStudioInfo(object):
                 self._install_directory = install_directory
 
                 dev_env_directory = os.path.join(
-                    install_directory, 'Common7', 'IDE'
+                    install_directory,
+                    os.path.split(installation.product_path)[0]
                 )
                 if os.path.exists(dev_env_directory):
                     self._dev_env_directory = dev_env_directory
@@ -2037,6 +2042,55 @@ class VisualStudioInfo(object):
                 if isinstance(value, list):
                     value = os.pathsep.join(value)
                 yield key, str(value)
+
+    def __str__(self):
+        installation = self.c_info.cpp_installation
+
+        if installation is None:
+            return ''
+
+        template = (
+            '== {name}==============================================\n'
+            '   version:            {version}\n'
+            '   version (friendly): {product_line_version}\n'
+            '   display version:    {product_display_version}\n'
+            '   path:               {path}\n'
+            '   executable:         {product_path}\n'
+            '   is complete:        {is_complete}\n'
+            '   is prerelease:      {is_prerelease}\n'
+            '   is launchable:      {is_launchable}\n'
+            '   state:              {state}\n'
+        )
+
+        if self.__name__ == 'VisualStudioInfo':
+            name = 'Visual Studio '
+        else:
+            name = 'Build Tools =='
+
+        path = installation.path
+        version = installation.version
+        is_complete = installation.is_complete
+        is_prerelease = installation.is_prerelease
+        is_launchable = installation.is_launchable
+        state = ', '.join(installation.state)
+        product_path = os.path.join(path, installation.product_path)
+
+        catalog = installation.catalog
+        product_display_version = catalog.product_display_version
+        product_line_version = catalog.product_line_version
+
+        return template.format(
+            name=name,
+            path=path,
+            version=version,
+            is_complete=is_complete,
+            is_prerelease=is_prerelease,
+            is_launchable=is_launchable,
+            product_path=product_path,
+            product_display_version=product_display_version,
+            product_line_version=product_line_version,
+            state=state
+        )
 
 
 class WindowsSDKInfo(object):
@@ -2723,6 +2777,38 @@ class WindowsSDKInfo(object):
                     value = os.pathsep.join(value)
                 yield key, str(value)
 
+    def __str__(self):
+        template = (
+            '== Windows SDK ================================================\n'
+            '   version:     {target_platform}\n'
+            '   sdk version: {windows_sdk_version}\n'
+            '   path:        {target_platform_path}\n'
+            '\n'
+            '== Universal CRT ==============================================\n'
+            '   version:           {ucrt_version}\n'
+            '   path:              {ucrt_sdk_directory}\n'
+            '   lib directory:     {ucrt_lib_directory}\n'
+            '   headers directory: {ucrt_headers_directory}\n'
+            '\n'
+            '== Extension SDK ==============================================\n'
+            '   path: {extension_sdk_directory}\n'
+            '\n'
+            '== TypeScript =================================================\n'
+            '   path: {type_script_path}\n'
+        )
+
+        return template.format(
+            target_platform=self.version,
+            windows_sdk_version=self.sdk_version,
+            target_platform_path=self.directory,
+            extension_sdk_directory=self.extension_sdk_directory,
+            ucrt_sdk_directory=self.ucrt_sdk_directory,
+            ucrt_headers_directory=self.ucrt_headers_directory,
+            ucrt_lib_directory=self.ucrt_lib_directory,
+            ucrt_version=self.ucrt_version,
+            type_script_path=self.type_script_path,
+        )
+
 
 class NETInfo(object):
 
@@ -3277,12 +3363,38 @@ class NETInfo(object):
 
     @property
     def lib_path(self) -> list:
+        path = []
         directory = self.directory
 
-        if directory and os.path.exists(directory):
-            return [directory]
+        pth = os.path.join(
+            directory,
+            self.version
+        )
 
-        return []
+        if os.path.exists(pth):
+            path += [pth]
+        else:
+            match = None
+            version = self.version
+            versions = [
+                item[1:] for item in os.listdir(directory)
+                if item.startswith('v')
+            ]
+            for ver in versions:
+                if version > ver:
+                    if match is None:
+                        match = ver
+                    elif ver > match:
+                        match = ver
+
+            if match is not None:
+                pth = os.path.join(
+                    directory,
+                    'v' + match
+                )
+                path += [pth]
+
+        return path
 
     @property
     def include(self) -> list:
@@ -3346,6 +3458,33 @@ class NETInfo(object):
                     value = os.pathsep.join(value)
                 yield key, str(value)
 
+    def __str__(self):
+        template = (
+            '== .NET =======================================================\n'
+            '   version:    {target_framework}\n'
+            '\n'
+            '   -- x86 -----------------------------------------------------\n'
+            '      version: {framework_version_32}\n'
+            '      path:    {framework_dir_32}\n'
+            '   -- x64 -----------------------------------------------------\n'
+            '      version: {framework_version_64}\n'
+            '      path:    {framework_dir_64}\n'
+            '   -- NETFX ---------------------------------------------------\n'
+            '      path:         {net_fx_tools_directory}\n'
+            '      x86 exe path: {executable_path_x86}\n'
+            '      x64 exe path: {executable_path_x64}\n'
+        )
+        return template.format(
+            target_framework=self.version,
+            framework_version_32=self.version_32,
+            framework_dir_32=self.directory_32,
+            framework_version_64=self.version_64,
+            framework_dir_64=self.directory_64,
+            net_fx_tools_directory=self.net_fx_tools_directory,
+            executable_path_x64=self.executable_path_x64,
+            executable_path_x86=self.executable_path_x86,
+        )
+
 
 def setup_environment(
     minimum_c_version: Optional[Union[int, float]] = None,
@@ -3355,45 +3494,59 @@ def setup_environment(
     minimum_sdk_version: Optional[str] = None,
     strict_sdk_version: Optional[str] = None,
     minimum_net_version: Optional[str] = None,
-    strict_net_version: Optional[str] = None
+    strict_net_version: Optional[str] = None,
+    vs_version: Optional[Union[str, int]] = None
 ):
     """
     Main entry point.
 
     :param minimum_c_version: The lowest MSVC compiler version to allow.
-    :type minimum_c_version: int, float
+    :type minimum_c_version: optional - int, float
 
     :param strict_c_version: The MSVC compiler version that MUST be used.
       ie 14.0, 14.2
-    :type strict_c_version: int or float
+    :type strict_c_version: optional - int or float
 
     :param minimum_toolkit_version: The lowest build tools version to allow.
-    :type minimum_toolkit_version: int
+    :type minimum_toolkit_version: optional - int
 
     :param strict_toolkit_version: The build tools version that MUST be used.
       ie 142, 143
-    :type strict_toolkit_version: int
+    :type strict_toolkit_version: optional - int
 
     :param minimum_sdk_version: The lowest SDK version to allow.
       This can work several ways, if you want to specify a specific version as
       the minimum `"10.0.22000.0"` or if you want to make sure that only
       Windows 10 SDK's get used `"10.0"`
-    :type minimum_sdk_version: str
+    :type minimum_sdk_version: optional - str
 
     :param strict_sdk_version: The Windows SDK that MUST be used.
       Whole version only.
-    :type strict_sdk_version: str
+    :type strict_sdk_version: optional - str
 
     :param minimum_net_version: Works the same as minimum_sdk_version
-    :type minimum_net_version: str
+    :type minimum_net_version: optional - str
 
     :param strict_net_version: works the same as strict_sdk_version
-    :type strict_net_version: str
+    :type strict_net_version: optional - str
+
+    :param vs_version: The version of visual studio you want to use.
+      This can be one of the following version types.
+
+         * version: `str("16.10.31515.178")`
+         * display version:`str("16.10.4")`
+         * product line version: `int(2019)`.
+
+      If you have 2 installations that share the same product line version
+      the installation with the  higher version will get used. An example of
+      this is Visual Studio 20019 and Build Tools 2019. If you want to specify
+      a specific installation  in this case then use the version or
+      display version options.
+    :type vs_version: optional - str, int
 
     :return: Environment instance
     :rtype: Environment
     """
-    import distutils.log
 
     distutils.log.debug(
         'Setting up Windows build environment, please wait.....'
@@ -3432,10 +3585,11 @@ def setup_environment(
         minimum_sdk_version,
         strict_sdk_version,
         minimum_net_version,
-        strict_net_version
+        strict_net_version,
+        vs_version
     )
 
-    distutils.log.debug(str(environment))
+    distutils.log.debug('\n' + str(environment))
 
     for key, value in environment.build_environment.items():
         os.environ[key] = value
@@ -3445,13 +3599,17 @@ def setup_environment(
 
 if windows:
     if __name__ == '__main__':
+        distutils.log.set_threshold(distutils.log.DEBUG)
+
         python_info = PythonInfo()
 
         # if python_info.architecture == 'x64':
         #     PROGRAM_FILES_X86 += ' (x86)'
 
-        envr = setup_environment()
-        print(envr)
+        # build tools   2019 '16.10.31515.178'  '16.10.4'
+        # visual studio 2019 '16.11.31729.503'  '16.11.5'
+
+        envr = setup_environment()  # vs_version='16.10.4')
         print()
         print()
         print('SET ENVIRONMENT VARIABLES')
