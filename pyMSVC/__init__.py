@@ -37,138 +37,163 @@ import os
 import sys
 import ctypes
 import subprocess
+import winreg
 import distutils.log
 from typing import Optional, Union
 
-windows = sys.platform.startswith('win')
 
-if windows:
+_IS_WIN = sys.platform.startswith('win')
+
+
+if _IS_WIN:
     try:
         from . import vswhere
     except ImportError:
         import vswhere
 
-    from ctypes import HRESULT
-    from ctypes.wintypes import (
-        BOOL,
-        DWORD,
-        LPCVOID,
-        LPCWSTR,
-        LPVOID,
-        UINT,
-        INT,
-        HWND,
-        HANDLE,
-        LPWSTR
-    )
 
-    import winreg as _winreg
+_HRESULT = ctypes.c_long
+_BOOL = ctypes.c_bool
+_DWORD = ctypes.c_ulong
+_LPCVOID = ctypes.c_void_p
+_LPCWSTR = ctypes.c_wchar_p
+_LPVOID = ctypes.c_void_p
+_UINT = ctypes.c_uint
+_INT = ctypes.c_int
+_HANDLE = ctypes.c_void_p
+_HWND = ctypes.c_void_p
+_LPWSTR = ctypes.c_wchar_p
+_POINTER = ctypes.POINTER
+_CHAR = _INT
+_PUINT = _POINTER(_UINT)
+_LPDWORD = _POINTER(_DWORD)
 
-    POINTER = ctypes.POINTER
-    CHAR = INT
-    PUINT = POINTER(UINT)
-    LPDWORD = POINTER(DWORD)
 
-    _version = ctypes.windll.version
-    _kernel32 = ctypes.windll.Kernel32
-    _shell32 = ctypes.windll.Shell32
-
+if _IS_WIN:
     try:
         _vswhere = vswhere.SetupConfiguration.GetSetupConfiguration()
     except:  # NOQA
         _vswhere = None
+else:
+    _vswhere = None
+
+
+# noinspection PyPep8Naming
+class _VS_FIXEDFILEINFO(ctypes.Structure):
+    _fields_ = [
+        ("dwSignature", _DWORD),  # will be 0xFEEF04BD
+        ("dwStrucVersion", _DWORD),
+        ("dwFileVersionMS", _DWORD),
+        ("dwFileVersionLS", _DWORD),
+        ("dwProductVersionMS", _DWORD),
+        ("dwProductVersionLS", _DWORD),
+        ("dwFileFlagsMask", _DWORD),
+        ("dwFileFlags", _DWORD),
+        ("dwFileOS", _DWORD),
+        ("dwFileType", _DWORD),
+        ("dwFileSubtype", _DWORD),
+        ("dwFileDateMS", _DWORD),
+        ("dwFileDateLS", _DWORD)
+    ]
+
+
+if _IS_WIN:
+    _version = ctypes.windll.version
 
     _GetFileVersionInfoSize = _version.GetFileVersionInfoSizeW
-    _GetFileVersionInfoSize.restype = DWORD
-    _GetFileVersionInfoSize.argtypes = [LPCWSTR, LPDWORD]
-
-    _GetFileVersionInfo = _version.GetFileVersionInfoW
-    _GetFileVersionInfo.restype = BOOL
-    _GetFileVersionInfo.argtypes = [LPCWSTR, DWORD, DWORD, LPVOID]
+    _GetFileVersionInfoSize.restype = _DWORD
+    _GetFileVersionInfoSize.argtypes = [_LPCWSTR, _LPDWORD]
 
     _VerQueryValue = _version.VerQueryValueW
-    _VerQueryValue.restype = BOOL
-    _VerQueryValue.argtypes = [LPCVOID, LPCWSTR, POINTER(LPVOID), PUINT]
+    _VerQueryValue.restype = _BOOL
+    _VerQueryValue.argtypes = [_LPCVOID, _LPCWSTR, _POINTER(_LPVOID), _PUINT]
 
-    # noinspection PyPep8Naming
-    class VS_FIXEDFILEINFO(ctypes.Structure):
-        _fields_ = [
-            ("dwSignature", DWORD),  # will be 0xFEEF04BD
-            ("dwStrucVersion", DWORD),
-            ("dwFileVersionMS", DWORD),
-            ("dwFileVersionLS", DWORD),
-            ("dwProductVersionMS", DWORD),
-            ("dwProductVersionLS", DWORD),
-            ("dwFileFlagsMask", DWORD),
-            ("dwFileFlags", DWORD),
-            ("dwFileOS", DWORD),
-            ("dwFileType", DWORD),
-            ("dwFileSubtype", DWORD),
-            ("dwFileDateMS", DWORD),
-            ("dwFileDateLS", DWORD)
-        ]
+    _GetFileVersionInfo = _version.GetFileVersionInfoW
+    _GetFileVersionInfo.restype = _BOOL
+    _GetFileVersionInfo.argtypes = [_LPCWSTR, _DWORD, _DWORD, _LPVOID]
 
 
-def _get_file_version(filename):
-    dw_len = _GetFileVersionInfoSize(filename, None)
-    if not dw_len:
-        raise ctypes.WinError()
+    def _get_file_version(filename):
+        dw_len = _GetFileVersionInfoSize(filename, None)
+        if not dw_len:
+            raise ctypes.WinError()
 
-    lp_data = (CHAR * dw_len)()
-    if not _GetFileVersionInfo(filename, 0, ctypes.sizeof(lp_data), lp_data):
-        raise ctypes.WinError()
+        lp_data = (_CHAR * dw_len)()
+        if not _GetFileVersionInfo(
+            filename,
+            0,
+            ctypes.sizeof(lp_data), lp_data
+        ):
+            raise ctypes.WinError()
 
-    u_len = UINT()
-    lpffi = POINTER(VS_FIXEDFILEINFO)()
-    lplp_buffer = ctypes.cast(ctypes.pointer(lpffi), POINTER(LPVOID))
-    if not _VerQueryValue(lp_data, "\\", lplp_buffer, ctypes.byref(u_len)):
-        raise ctypes.WinError()
+        u_len = _UINT()
+        lpffi = _POINTER(_VS_FIXEDFILEINFO)()
+        lplp_buffer = ctypes.cast(ctypes.pointer(lpffi), _POINTER(_LPVOID))
+        if not _VerQueryValue(lp_data, "\\", lplp_buffer, ctypes.byref(u_len)):
+            raise ctypes.WinError()
 
-    ffi = lpffi.contents
-    return (
-        ffi.dwFileVersionMS >> 16,
-        ffi.dwFileVersionMS & 0xFFFF,
-        ffi.dwFileVersionLS >> 16,
-        ffi.dwFileVersionLS & 0xFFFF,
-    )
+        ffi = lpffi.contents
+        return (
+            ffi.dwFileVersionMS >> 16,
+            ffi.dwFileVersionMS & 0xFFFF,
+            ffi.dwFileVersionLS >> 16,
+            ffi.dwFileVersionLS & 0xFFFF,
+        )
 
 
-if windows:
-    CSIDL_PROGRAM_FILES = 0x26
-    CSIDL_PROGRAM_FILESX86 = 0x2A
+    _CSIDL_PROGRAM_FILES = 0x26
+    _CSIDL_PROGRAM_FILESX86 = 0x2A
 
-    SHGFP_TYPE_CURRENT = 0
-    MAX_PATH = 260
-    CSIDL_FLAG_DONT_VERIFY = 16384
+    _SHGFP_TYPE_CURRENT = 0
+    _MAX_PATH = 260
+    _CSIDL_FLAG_DONT_VERIFY = 16384
+
+    _shell32 = ctypes.windll.Shell32
 
     # noinspection PyUnboundLocalVariable
-    SHGetFolderPathW = _shell32.SHGetFolderPathW
-    SHGetFolderPathW.restype = HRESULT
-    SHGetFolderPathW.argtypes = [HWND, INT, HANDLE, DWORD, LPWSTR]
+    _SHGetFolderPathW = _shell32.SHGetFolderPathW
+    _SHGetFolderPathW.restype = _HRESULT
+    _SHGetFolderPathW.argtypes = [_HWND, _INT, _HANDLE, _DWORD, _LPWSTR]
 
-    buf = ctypes.create_unicode_buffer(MAX_PATH)
+    _buf = ctypes.create_unicode_buffer(_MAX_PATH)
 
-    SHGetFolderPathW(
+    _SHGetFolderPathW(
         0,
-        CSIDL_PROGRAM_FILESX86 | CSIDL_FLAG_DONT_VERIFY,
+        _CSIDL_PROGRAM_FILESX86 | _CSIDL_FLAG_DONT_VERIFY,
         0,
-        SHGFP_TYPE_CURRENT,
-        buf
+        _SHGFP_TYPE_CURRENT,
+        _buf
     )
 
-    PROGRAM_FILES_X86 = buf.value
+    _PROGRAM_FILES_X86 = _buf.value
 
-    buf = ctypes.create_unicode_buffer(MAX_PATH)
+    _buf = ctypes.create_unicode_buffer(_MAX_PATH)
 
-    SHGetFolderPathW(
+    _SHGetFolderPathW(
         0,
-        CSIDL_PROGRAM_FILES | CSIDL_FLAG_DONT_VERIFY,
+        _CSIDL_PROGRAM_FILES | _CSIDL_FLAG_DONT_VERIFY,
         0,
-        SHGFP_TYPE_CURRENT,
-        buf
+        _SHGFP_TYPE_CURRENT,
+        _buf
     )
 
-    PROGRAM_FILES = buf.value
+    _PROGRAM_FILES = _buf.value
+
+    del _buf
+    del _SHGetFolderPathW
+    del _shell32
+    del _CSIDL_PROGRAM_FILES
+    del _CSIDL_PROGRAM_FILESX86
+    del _SHGFP_TYPE_CURRENT
+    del _MAX_PATH
+    del _CSIDL_FLAG_DONT_VERIFY
+
+else:
+    def _get_file_version(_):
+        pass
+
+    _PROGRAM_FILES_X86 = ''
+    _PROGRAM_FILES = ''
 
 
 _found_cl = {}
@@ -207,8 +232,8 @@ def _find_cl(path):
 
 def _get_program_files_vc():
     pths = [
-        os.path.join(PROGRAM_FILES_X86, f)
-        for f in os.listdir(PROGRAM_FILES_X86)
+        os.path.join(_PROGRAM_FILES_X86, f)
+        for f in os.listdir(_PROGRAM_FILES_X86)
         if 'Visual Studio' in f
     ]
     res = [
@@ -231,27 +256,27 @@ def _read_reg_keys(key, wow6432=False):
         root = key[0]
         key = key[1]
     else:
-        root = _winreg.HKEY_LOCAL_MACHINE
+        root = winreg.HKEY_LOCAL_MACHINE
         key = 'SOFTWARE\\Microsoft\\' + key
 
     try:
         if wow6432:
-            handle = _winreg.OpenKey(
+            handle = winreg.OpenKey(
                 root,
                 key,
                 0,
-                _winreg.KEY_READ | _winreg.KEY_WOW64_32KEY
+                winreg.KEY_READ | winreg.KEY_WOW64_32KEY
             )
         else:
-            handle = _winreg.OpenKeyEx(root, key)
-    except _winreg.error:
+            handle = winreg.OpenKeyEx(root, key)
+    except winreg.error:
         return []
     res = []
 
-    for i in range(_winreg.QueryInfoKey(handle)[0]):
-        res += [_winreg.EnumKey(handle, i)]
+    for i in range(winreg.QueryInfoKey(handle)[0]):
+        res += [winreg.EnumKey(handle, i)]
 
-    _winreg.CloseKey(handle)
+    winreg.CloseKey(handle)
     return res
 
 
@@ -260,27 +285,27 @@ def _read_reg_values(key, wow6432=False):
         root = key[0]
         key = key[1]
     else:
-        root = _winreg.HKEY_LOCAL_MACHINE
+        root = winreg.HKEY_LOCAL_MACHINE
         key = 'SOFTWARE\\Microsoft\\' + key
 
     try:
         if wow6432:
-            handle = _winreg.OpenKey(
+            handle = winreg.OpenKey(
                 root,
                 key,
                 0,
-                _winreg.KEY_READ | _winreg.KEY_WOW64_32KEY
+                winreg.KEY_READ | winreg.KEY_WOW64_32KEY
             )
         else:
-            handle = _winreg.OpenKeyEx(root, key)
-    except _winreg.error:
+            handle = winreg.OpenKeyEx(root, key)
+    except winreg.error:
         return {}
     res = {}
-    for i in range(_winreg.QueryInfoKey(handle)[1]):
-        name, value, _ = _winreg.EnumValue(handle, i)
+    for i in range(winreg.QueryInfoKey(handle)[1]):
+        name, value, _ = winreg.EnumValue(handle, i)
         res[_convert_mbcs(name)] = _convert_mbcs(value)
 
-    _winreg.CloseKey(handle)
+    winreg.CloseKey(handle)
 
     return res
 
@@ -319,16 +344,6 @@ def _convert_version(ver):
     ver = '.'.join(str(item) for item in ver)
 
     return ver
-
-
-def _get_higher_version(v1, v2):
-    ver1 = _convert_version(v1)
-    ver2 = _convert_version(v2)
-
-    if ver1 >= ver2:
-        return v1
-
-    return v2
 
 
 class Environment(object):
@@ -886,7 +901,7 @@ class VisualCInfo(object):
         version = float(int(self.version.split('.')[0]))
 
         reg_path = (
-            _winreg.HKEY_LOCAL_MACHINE,
+            winreg.HKEY_LOCAL_MACHINE,
             r'SOFTWARE\Microsoft\VisualStudio'
             r'\{0:.1f}\Setup\F#'.format(version)
         )
@@ -988,7 +1003,7 @@ class VisualCInfo(object):
             add(_get_program_files_vc())
 
             reg_path = (
-                _winreg.HKEY_LOCAL_MACHINE,
+                winreg.HKEY_LOCAL_MACHINE,
                 r'SOFTWARE\Policies\Microsoft'
                 r'\VisualStudio\Setup'
             )
@@ -1012,7 +1027,7 @@ class VisualCInfo(object):
                     add(res)
 
             reg_path = (
-                _winreg.HKEY_CLASSES_ROOT,
+                winreg.HKEY_CLASSES_ROOT,
                 r'Local Settings\Software'
                 r'\Microsoft\Windows\Shell\MuiCache'
             )
@@ -1074,7 +1089,7 @@ class VisualCInfo(object):
                 )
 
             reg_path = (
-                _winreg.HKEY_LOCAL_MACHINE,
+                winreg.HKEY_LOCAL_MACHINE,
                 'SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7'
             )
 
@@ -1457,7 +1472,7 @@ class VisualCInfo(object):
     def html_help_path(self) -> Optional[str]:
 
         reg_path = (
-            _winreg.HKEY_LOCAL_MACHINE,
+            winreg.HKEY_LOCAL_MACHINE,
             r'SOFTWARE\Wow6432Node\Microsoft\Windows'
             r'\CurrentVersion\App Paths\hhw.exe'
         )
@@ -2132,7 +2147,7 @@ class WindowsSDKInfo(object):
 
         if version.startswith('10'):
             extension_path = os.path.join(
-                PROGRAM_FILES_X86,
+                _PROGRAM_FILES_X86,
                 'Microsoft SDKs',
                 'Windows Kits',
                 '10',
@@ -3545,6 +3560,10 @@ def setup_environment(
     :return: Environment instance
     :rtype: Environment
     """
+    if not _IS_WIN:
+        raise RuntimeError(
+            'This script will only work with a Windows opperating system.'
+        )
 
     distutils.log.debug(
         'Setting up Windows build environment, please wait.....'
@@ -3595,32 +3614,31 @@ def setup_environment(
     return environment
 
 
-if windows:
-    if __name__ == '__main__':
-        distutils.log.set_threshold(distutils.log.DEBUG)
+if __name__ == '__main__':
+    distutils.log.set_threshold(distutils.log.DEBUG)
 
-        python_info = PythonInfo()
+    python_info = PythonInfo()
 
-        # if python_info.architecture == 'x64':
-        #     PROGRAM_FILES_X86 += ' (x86)'
+    # if python_info.architecture == 'x64':
+    #     PROGRAM_FILES_X86 += ' (x86)'
 
-        # build tools   2019 '16.10.31515.178'  '16.10.4'
-        # visual studio 2019 '16.11.31729.503'  '16.11.5'
+    # build tools   2019 '16.10.31515.178'  '16.10.4'
+    # visual studio 2019 '16.11.31729.503'  '16.11.5'
 
-        envr = setup_environment()  # vs_version='16.10.4')
+    envr = setup_environment()  # vs_version='16.10.4')
+    print()
+    print()
+    print('SET ENVIRONMENT VARIABLES')
+    print('------------------------------------------------')
+    print()
+    for k, v in envr:
+        if os.pathsep in v:
+            v = v.split(';')
+            if not v[-1]:
+                v = v[:-1]
+
+        print(k + ':', v)
         print()
-        print()
-        print('SET ENVIRONMENT VARIABLES')
-        print('------------------------------------------------')
-        print()
-        for k, v in envr:
-            if os.pathsep in v:
-                v = v.split(';')
-                if not v[-1]:
-                    v = v[:-1]
 
-            print(k + ':', v)
-            print()
-
-    else:
-        python_info = PythonInfo()
+else:
+    python_info = PythonInfo()
