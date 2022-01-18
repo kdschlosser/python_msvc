@@ -41,16 +41,13 @@ import winreg
 import distutils.log
 from typing import Optional, Union
 
-
 _IS_WIN = sys.platform.startswith('win')
-
 
 if _IS_WIN:
     try:
         from . import vswhere
     except ImportError:
         import vswhere
-
 
 _HRESULT = ctypes.c_long
 _BOOL = ctypes.c_bool
@@ -67,7 +64,6 @@ _POINTER = ctypes.POINTER
 _CHAR = _INT
 _PUINT = _POINTER(_UINT)
 _LPDWORD = _POINTER(_DWORD)
-
 
 if _IS_WIN:
     try:
@@ -192,9 +188,9 @@ else:
     def _get_file_version(_):
         pass
 
+
     _PROGRAM_FILES_X86 = ''
     _PROGRAM_FILES = ''
-
 
 _found_cl = {}
 
@@ -602,7 +598,7 @@ class PythonInfo(object):
 class VisualCInfo(object):
 
     def __init__(
-        self, 
+        self,
         environ: Environment,
         minimum_c_version: Optional[Union[int, float]] = None,
         strict_c_version: Optional[Union[int, float]] = None,
@@ -1154,18 +1150,18 @@ class VisualCInfo(object):
             for version in self._installed_c_paths:
                 if not isinstance(version, float):
                     continue
-                
+
                 if version >= self.minimum_c_version:
                     if match is None:
                         match = version
                     elif version < match:
                         match = version
-                        
+
             if match is None:
                 raise RuntimeError(
                     'No Compatible Visual C\\C++ version found.'
                 )
-            
+
             self._cpp_version = str(match)
 
         return self._cpp_version
@@ -1235,7 +1231,7 @@ class VisualCInfo(object):
         msvc_dll_path = self.msvc_dll_path
         if not msvc_dll_path:
             return
-            
+
         for f in os.listdir(msvc_dll_path):
             if f.endswith('dll'):
                 version = _get_file_version(
@@ -1428,7 +1424,7 @@ class VisualCInfo(object):
         """
         if self._msbuild_version is None:
             vc_version = str(float(int(self.version.split('.')[0])))
-            
+
             if vc_version == 9.0:
                 self._msbuild_version = '3.5'
             elif vc_version in (10.0, 11.0):
@@ -1825,8 +1821,8 @@ class VisualCInfo(object):
 class VisualStudioInfo(object):
 
     def __init__(
-        self, 
-        environ: Environment, 
+        self,
+        environ: Environment,
         c_info: VisualCInfo
     ):
         self.environment = environ
@@ -1853,10 +1849,8 @@ class VisualStudioInfo(object):
             if os.path.exists(install_directory):
                 self._install_directory = install_directory
 
-                dev_env_directory = os.path.join(
-                    install_directory,
-                    os.path.split(installation.product_path)[0]
-                )
+                dev_env_directory = os.path.split(installation.product_path)[0]
+
                 if os.path.exists(dev_env_directory):
                     self._dev_env_directory = dev_env_directory
 
@@ -1958,11 +1952,13 @@ class VisualStudioInfo(object):
             dev_env_dir = self.dev_env_directory
 
             if dev_env_dir is not None:
-                command = ''.join([
-                    '"',
-                    os.path.join(dev_env_dir, 'devenv'),
-                    '" /?\n'
-                ])
+                command = ''.join(
+                    [
+                        '"',
+                        os.path.join(dev_env_dir, 'devenv'),
+                        '" /?\n'
+                    ]
+                )
 
                 proc = subprocess.Popen(
                     'cmd',
@@ -2039,7 +2035,7 @@ class VisualStudioInfo(object):
             'v120': '120',
             'v110': '110',
             'v100': '100',
-            'v90': '90'
+            'v90' : '90'
         }
 
         toolset_version = self.c_info.toolset_version
@@ -2064,6 +2060,7 @@ class VisualStudioInfo(object):
 
         template = (
             '== {name}==============================================\n'
+            '   description:        {description}\n'
             '   version:            {version}\n'
             '   version (friendly): {product_line_version}\n'
             '   display version:    {product_display_version}\n'
@@ -2075,18 +2072,22 @@ class VisualStudioInfo(object):
             '   state:              {state}\n'
         )
 
-        if self.__name__ == 'VisualStudioInfo':
-            name = 'Visual Studio '
-        else:
-            name = 'Build Tools =='
+        name = installation.display_name
 
+        if name is None:
+            if self.__name__ == 'VisualStudioInfo':
+                name = 'Visual Studio '
+            else:
+                name = 'Build Tools =='
+
+        description = installation.description
         path = installation.path
         version = installation.version
         is_complete = installation.is_complete
         is_prerelease = installation.is_prerelease
         is_launchable = installation.is_launchable
         state = ', '.join(installation.state)
-        product_path = os.path.join(path, installation.product_path)
+        product_path = installation.product_path
 
         catalog = installation.catalog
         product_display_version = catalog.product_display_version
@@ -2094,6 +2095,7 @@ class VisualStudioInfo(object):
 
         return template.format(
             name=name,
+            description=description,
             path=path,
             version=version,
             is_complete=is_complete,
@@ -2109,9 +2111,9 @@ class VisualStudioInfo(object):
 class WindowsSDKInfo(object):
 
     def __init__(
-        self, 
-        environ: Environment, 
-        c_info: VisualCInfo, 
+        self,
+        environ: Environment,
+        c_info: VisualCInfo,
         minimum_sdk_version: Optional[str] = None,
         strict_sdk_version: Optional[str] = None
     ):

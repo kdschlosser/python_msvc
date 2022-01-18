@@ -1,10 +1,10 @@
 
-from distutils.core import setup
+from setuptools import setup
 
 
 setup(
     name='pyMSVC',
-    version='0.3.0',
+    version='0.4.0',
     url='https://github.com/kdschlosser/python_msvc',
     packages=['pyMSVC'],
     author='Kevin Schlosser',
@@ -14,6 +14,11 @@ setup(
         'Tired of having a new visual studio version break your setup program?\n'
         'This  library is the solution.'
     ),
+    install_requires=[
+        'comtypes==1.1.10',
+    ],
+    dependency_links=[
+        'https://github.com/kdschlosser/comtypes/tarball/bstr_type#egg=comtypes-1.1.10',
+    ],
     license='MIT',
-    install_requires=["comtypes"],
 )

@@ -29,6 +29,7 @@ try:
 except ImportError:
     raise RuntimeError('the comtypes library is needed to run this script')
 
+import os
 import weakref
 import ctypes
 from ctypes.wintypes import (
@@ -41,15 +42,15 @@ from ctypes.wintypes import (
 )
 
 from comtypes.automation import (
-    tagVARIANT
+    tagVARIANT,
+    BSTR
 )
 from comtypes import (
     GUID,
     COMMETHOD,
     POINTER,
     IUnknown,
-    HRESULT,
-    BSTR,
+    HRESULT
 )
 from comtypes._safearray import (  # NOQA
     SAFEARRAY,
@@ -59,6 +60,7 @@ from comtypes._safearray import (  # NOQA
 )
 
 LPVARIANT = POINTER(tagVARIANT)
+VARIANT = tagVARIANT
 ENUM = ctypes.c_uint
 IID = GUID
 CLSID = GUID
@@ -66,6 +68,11 @@ MAXUINT = 0xFFFFFFFF
 PULONGLONG = POINTER(ctypes.c_ulonglong)
 LPSAFEARRAY = POINTER(SAFEARRAY)
 _CoTaskMemFree = ctypes.windll.ole32.CoTaskMemFree
+
+kernel32 = ctypes.windll.kernel32
+
+_GetUserDefaultLCID = kernel32.GetUserDefaultLCID
+_GetUserDefaultLCID.restype = LCID
 
 
 def HRESULT_FROM_WIN32(x):
@@ -92,7 +99,7 @@ class InstanceState(ENUM):
     # No reboot is required for the instance.
     eNoRebootRequired = 4
     # do not know what this bit does
-    eUnknown = 8
+    eNoErrors = 8
     # The instance represents a complete install.
     eComplete = MAXUINT
 
@@ -119,9 +126,10 @@ class InstanceState(ENUM):
             res += ['no reboot required']
         else:
             res += ['reboot required']
-
-        if value | self.eUnknown == value:
-            res.append('unknown flag set')
+            if value | self.eNoErrors == value:
+                res.append('no errors')
+            else:
+                res.append('errors')
 
         return res
 
@@ -130,7 +138,7 @@ eNone = InstanceState.eNone
 eLocal = InstanceState.eLocal
 eRegistered = InstanceState.eRegistered
 eNoRebootRequired = InstanceState.eNoRebootRequired
-eUnknown = InstanceState.eUnknown
+eNoErrors = InstanceState.eNoErrors
 eComplete = InstanceState.eComplete
 
 
@@ -147,10 +155,12 @@ class Packages(object):
 
         def _add(items):
             for item in items:
-                res.append('\n'.join(
-                    '    ' + line
-                    for line in str(item).split('\n')
-                ))
+                res.append(
+                    '\n'.join(
+                        '    ' + line
+                        for line in str(item).split('\n')
+                    )
+                )
                 res.append('')
 
         res.append('vsix:')
@@ -434,16 +444,16 @@ class ISetupInstance(IUnknown):
     def display_name(self):
         try:
             # noinspection PyUnresolvedReferences
-            return self.GetDisplayName()
-        except OSError:
+            return self.GetDisplayName(_GetUserDefaultLCID())
+        except (OSError, ValueError, comtypes.COMError):
             pass
 
     @property
     def description(self):
         try:
             # noinspection PyUnresolvedReferences
-            return self.GetDescription()
-        except OSError:
+            return self.GetDescription(_GetUserDefaultLCID())
+        except (OSError, ValueError, comtypes.COMError):
             pass
 
     def __str__(self):
@@ -498,15 +508,6 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def product(self):
-        """
-        version
-        chip
-        language
-        branch
-        type
-        unique_id
-        is_extension
-        """
         if 'registered' in self.state:
             # noinspection PyUnresolvedReferences
             return self.GetProduct()
@@ -518,8 +519,10 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def product_path(self):
+        path = self.path
         # noinspection PyUnresolvedReferences
-        return self.GetProductPath()
+        product_path = self.GetProductPath()
+        return os.path.join(path, product_path)
 
     @property
     def errors(self):
@@ -894,9 +897,9 @@ class ISetupErrorState2(ISetupErrorState):
         return '\n'.join(res)
 
 
-IID_ISetupFailedPackageReference = IID(
-    "{E73559CD-7003-4022-B134-27DC650B280F}"
-    )
+IID_ISetupFailedPackageReference = (
+    IID("{E73559CD-7003-4022-B134-27DC650B280F}")
+)
 
 
 # A reference to a failed package.
@@ -904,9 +907,9 @@ class ISetupFailedPackageReference(ISetupPackageReference):
     _iid_ = IID_ISetupFailedPackageReference
 
 
-IID_ISetupFailedPackageReference2 = IID(
-    "{0FAD873E-E874-42E3-B268-4FE2F096B9CA}"
-    )
+IID_ISetupFailedPackageReference2 = (
+    IID("{0FAD873E-E874-42E3-B268-4FE2F096B9CA}")
+)
 
 
 # A reference to a failed package.
@@ -951,7 +954,7 @@ class ISetupPropertyStore(IUnknown):
 
         res = []
         for i in range(cPackages):
-            res.append(str(names[i]))
+            res.append(names[i])
 
         SafeArrayUnlock(safearray)
 
@@ -959,17 +962,23 @@ class ISetupPropertyStore(IUnknown):
 
     def __iter__(self):
         for n in self.names:
+            v = VARIANT()
             # noinspection PyUnresolvedReferences
-            yield Property(n, self.GetValue(n))
+            self.GetValue(n, ctypes.byref(v))
+
+            v = v.value
+            if isinstance(v, BSTR):
+                v = v.value
+
+            yield Property(n.value, v)
 
     def __str__(self):
         return '\n'.join(str(prop) for prop in self)
 
 
-IID_ISetupLocalizedPropertyStore = IID(
-    "{5BB53126-E0D5-43DF-80F1-6B161E5C6F6C}"
-    )
-
+IID_ISetupLocalizedPropertyStore = (
+    IID("{5BB53126-E0D5-43DF-80F1-6B161E5C6F6C}")
+)
 
 # Provides localized named properties.
 class ISetupLocalizedPropertyStore(IUnknown):
@@ -987,7 +996,7 @@ class ISetupLocalizedPropertyStore(IUnknown):
 
         res = []
         for i in range(cPackages):
-            res.append(str(names[i]))
+            res.append(names[i])
 
         SafeArrayUnlock(safearray)
 
@@ -995,8 +1004,15 @@ class ISetupLocalizedPropertyStore(IUnknown):
 
     def __iter__(self):
         for n in self.names:
+            v = VARIANT()
             # noinspection PyUnresolvedReferences
-            yield Property(n, self.GetValue(n))
+            self.GetValue(n, ctypes.byref(v))
+
+            v = v.value
+            if isinstance(v, BSTR):
+                v = v.value
+
+            yield Property(n.value, v)
 
     def __str__(self):
         return '\n'.join(str(prop) for prop in self)
@@ -1108,6 +1124,7 @@ ISetupInstance._methods_ = [
         [],
         HRESULT,
         "GetDisplayName",
+        (['in'], LCID, "lcid"),
         (['out'], POINTER(BSTR), "pbstrDisplayName")
     ),
     # Gets the description of the product installed in this instance.
@@ -1115,7 +1132,7 @@ ISetupInstance._methods_ = [
         [],
         HRESULT,
         "GetDescription",
-        # (['in'], LCID, "lcid"),
+        (['in'], LCID, "lcid"),
         (['out'], POINTER(BSTR), "pbstrDescription")
     ),
     # Resolves the optional relative path to the root path of the instance.
@@ -1423,7 +1440,7 @@ ISetupPropertyStore._methods_ = (
         HRESULT,
         "GetValue",
         (['in'], LPCOLESTR, "pwszName"),
-        (['out'], LPVARIANT, "pvtValue")
+        (['in'], LPVARIANT, "pvtValue")
     )
 )
 
