@@ -15,10 +15,7 @@ setup(
         'This  library is the solution.'
     ),
     install_requires=[
-        'comtypes==1.1.10',
-    ],
-    dependency_links=[
-        'https://github.com/kdschlosser/comtypes/tarball/bstr_type#egg=comtypes-1.1.10',
+        'comtypes==1.1.11',
     ],
     license='MIT',
 )
