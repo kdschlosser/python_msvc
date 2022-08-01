@@ -485,7 +485,7 @@ class ISetupInstance2(ISetupInstance):
         SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
-        packs = comtypes.cast(
+        packs = ctypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupPackageReference))
         )
@@ -810,7 +810,7 @@ class ISetupErrorState(IUnknown):
         SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
-        packs = comtypes.cast(
+        packs = ctypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupFailedPackageReference))
         )
@@ -838,7 +838,7 @@ class ISetupErrorState(IUnknown):
         SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
-        packs = comtypes.cast(
+        packs = ctypes.cast(
             safearray.contents.pvData,
             POINTER(POINTER(ISetupFailedPackageReference))
         )
@@ -949,7 +949,7 @@ class ISetupPropertyStore(IUnknown):
 
         SafeArrayLock(safearray)
 
-        names = comtypes.cast(safearray.contents.pvData, POINTER(BSTR))
+        names = ctypes.cast(safearray.contents.pvData, POINTER(BSTR))
         cPackages = safearray.contents.rgsabound[0].cElements
 
         res = []
@@ -970,7 +970,7 @@ class ISetupPropertyStore(IUnknown):
             if isinstance(v, BSTR):
                 v = v.value
 
-            yield Property(n.value, v)
+            yield Property(n, v)
 
     def __str__(self):
         return '\n'.join(str(prop) for prop in self)
@@ -991,7 +991,7 @@ class ISetupLocalizedPropertyStore(IUnknown):
 
         SafeArrayLock(safearray)
 
-        names = comtypes.cast(safearray.contents.pvData, POINTER(BSTR))
+        names = ctypes.cast(safearray.contents.pvData, POINTER(BSTR))
         cPackages = safearray.contents.rgsabound[0].cElements
 
         res = []
