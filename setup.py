@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='pyMSVC',
-    version='0.4.0',
+    version='0.5.0',
     url='https://github.com/kdschlosser/python_msvc',
     packages=['pyMSVC'],
     author='Kevin Schlosser',
