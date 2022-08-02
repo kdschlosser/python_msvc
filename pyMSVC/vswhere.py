@@ -29,11 +29,13 @@ try:
 except ImportError:
     raise RuntimeError('the comtypes library is needed to run this script')
 
-import os
 import weakref
 import ctypes
+import datetime
 from ctypes.wintypes import (
-    LPFILETIME,
+    WORD,
+    DWORD,
+    BOOL,
     LPCOLESTR,
     ULONG,
     LPCWSTR,
@@ -55,8 +57,8 @@ from comtypes import (
 from comtypes._safearray import (  # NOQA
     SAFEARRAY,
     VARIANT_BOOL,
-    SafeArrayLock,
-    SafeArrayUnlock
+    SafeArrayLock as _SafeArrayLock,
+    SafeArrayUnlock as _SafeArrayUnlock
 )
 
 LPVARIANT = POINTER(tagVARIANT)
@@ -85,6 +87,86 @@ ERROR_NOT_FOUND = 0x00000490
 # Constants
 E_NOTFOUND = HRESULT_FROM_WIN32(ERROR_NOT_FOUND)
 E_FILENOTFOUND = HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
+
+_kernel32 = ctypes.windll.kernel32
+
+_FileTimeToSystemTime = _kernel32.FileTimeToSystemTime
+_FileTimeToSystemTime.restype = BOOL
+
+_SystemTimeToFileTime = _kernel32.SystemTimeToFileTime
+_SystemTimeToFileTime.restype = BOOL
+
+
+class _FILETIME(ctypes.Structure):
+    _fields_ = [
+        ('dwLowDateTime', DWORD),
+        ('dwHighDateTime', DWORD)
+    ]
+
+    @property
+    def value(self):
+        system_time = SYSTEMTIME()
+        _FileTimeToSystemTime(ctypes.byref(self), ctypes.byref(system_time))
+        return system_time.value
+
+    @value.setter
+    def value(self, dt):
+        system_time = SYSTEMTIME()
+        system_time.value = dt
+        _SystemTimeToFileTime(ctypes.byref(system_time), ctypes.byref(self))
+
+
+FILETIME = _FILETIME
+LPFILETIME = POINTER(FILETIME)
+
+
+class _SYSTEMTIME(ctypes.Structure):
+    _fields_ = [
+        ('wYear', WORD),
+        ('wMonth', WORD),
+        ('wDayOfWeek', WORD),
+        ('wDay', WORD),
+        ('wHour', WORD),
+        ('wMinute', WORD),
+        ('wSecond', WORD),
+        ('wMilliseconds', WORD),
+    ]
+
+    @property
+    def value(self):
+        dt = datetime.datetime(
+            year=self.wYear,
+            month=self.wMonth,
+            day=self.wDay,
+            hour=self.wHour,
+            minute=self.wMinute,
+            second=self.wSecond,
+            microsecond=self.wMilliseconds * 1000
+        )
+
+        return dt
+
+    # noinspection PyAttributeOutsideInit
+    @value.setter
+    def value(self, dt):
+        if isinstance(dt, (int, float)):
+            dt = datetime.datetime.fromtimestamp(dt)
+
+        weekday = dt.weekday() + 1
+        if weekday == 7:
+            weekday = 0
+
+        self.wYear = dt.year
+        self.wMonth = dt.month
+        self.wDayOfWeek = weekday
+        self.wDay = dt.day
+        self.wHour = dt.hour
+        self.wMinute = dt.minute
+        self.wSecond = dt.second
+        self.wMilliseconds = int(dt.microsecond / 1000)
+
+
+SYSTEMTIME = _SYSTEMTIME
 
 
 # Enumerations
@@ -418,7 +500,7 @@ class ISetupInstance(IUnknown):
     @property
     def install_date(self):
         # noinspection PyUnresolvedReferences
-        return self.GetInstallDate()
+        return self.GetInstallDate().value
 
     @property
     def name(self):
@@ -457,7 +539,12 @@ class ISetupInstance(IUnknown):
             pass
 
     def __str__(self):
+        title_bar = '-- ' + str(self.display_name) + ' '
+        title_bar += '-' * (63 - len(title_bar))
         res = [
+            title_bar,
+            'description: ' + str(self.description),
+            'version: ' + str(self.version),
             'id: ' + str(self.id),
             'name: ' + str(self.name),
             'display name: ' + str(self.display_name),
@@ -465,7 +552,7 @@ class ISetupInstance(IUnknown):
             'path: ' + str(self.path),
             'version: ' + str(self.version),
             'full version: ' + str(self.full_version),
-            'install date: ' + str(self.install_date)
+            'install date: ' + self.install_date.strftime('%c')
         ]
         return '\n'.join(res)
 
@@ -482,7 +569,7 @@ class ISetupInstance2(ISetupInstance):
         # noinspection PyUnresolvedReferences
         safearray = self.GetPackages()
 
-        SafeArrayLock(safearray)
+        _SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
         packs = ctypes.cast(
@@ -497,7 +584,7 @@ class ISetupInstance2(ISetupInstance):
             p = packs[i]
             res.append(p)
 
-        SafeArrayUnlock(safearray)
+        _SafeArrayUnlock(safearray)
         res = Packages(res)
         return res
 
@@ -508,6 +595,15 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def product(self):
+        """
+        version
+        chip
+        language
+        branch
+        type
+        unique_id
+        is_extension
+        """
         if 'registered' in self.state:
             # noinspection PyUnresolvedReferences
             return self.GetProduct()
@@ -519,10 +615,8 @@ class ISetupInstance2(ISetupInstance):
 
     @property
     def product_path(self):
-        path = self.path
         # noinspection PyUnresolvedReferences
-        product_path = self.GetProductPath()
-        return os.path.join(path, product_path)
+        return self.GetProductPath()
 
     @property
     def errors(self):
@@ -546,7 +640,7 @@ class ISetupInstance2(ISetupInstance):
     @property
     def is_prerelease(self):
         catalog = self.QueryInterface(ISetupInstanceCatalog)
-        return catalog.IsPrerelease()
+        return catalog.IsPrerelease()  # NOQA
 
     @property
     def catalog(self):
@@ -579,7 +673,8 @@ class ISetupInstance2(ISetupInstance):
             'properties:',
             '{properties}',
             'catalog:',
-            '{catalog}'
+            '{catalog}',
+            '-' * 63
         ]
 
         res = '\n'.join(res)
@@ -751,7 +846,7 @@ class ISetupConfiguration(IUnknown):
     def __call__(self):
         try:
             return self.QueryInterface(ISetupConfiguration2)
-        except ValueError:
+        except (ValueError, OSError, comtypes.COMError):
             return self
 
     def __iter__(self):
@@ -764,6 +859,13 @@ class ISetupConfiguration(IUnknown):
                 break
 
             yield si(helper)
+
+    def __str__(self):
+        res = []
+        for instance_config in self:
+            res += [str(instance_config)]
+
+        return '\n\n\n'.join(res)
 
 
 IID_ISetupConfiguration2 = IID("{26AAB78C-4A60-49D6-AF3B-3C35BC93365D}")
@@ -807,7 +909,7 @@ class ISetupErrorState(IUnknown):
         except ValueError:
             return Packages([])
 
-        SafeArrayLock(safearray)
+        _SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
         packs = ctypes.cast(
@@ -823,7 +925,7 @@ class ISetupErrorState(IUnknown):
             p = p.QueryInterface(ISetupFailedPackageReference2)
             res.append(p)
 
-        SafeArrayUnlock(safearray)
+        _SafeArrayUnlock(safearray)
         res = Packages(res)
         return res
 
@@ -835,7 +937,7 @@ class ISetupErrorState(IUnknown):
         except ValueError:
             return Packages([])
 
-        SafeArrayLock(safearray)
+        _SafeArrayLock(safearray)
 
         # noinspection PyTypeChecker
         packs = ctypes.cast(
@@ -851,7 +953,7 @@ class ISetupErrorState(IUnknown):
             p = p.QueryInterface(ISetupFailedPackageReference2)
             res.append(p)
 
-        SafeArrayUnlock(safearray)
+        _SafeArrayUnlock(safearray)
         res = Packages(res)
         return res
 
@@ -897,9 +999,9 @@ class ISetupErrorState2(ISetupErrorState):
         return '\n'.join(res)
 
 
-IID_ISetupFailedPackageReference = (
-    IID("{E73559CD-7003-4022-B134-27DC650B280F}")
-)
+IID_ISetupFailedPackageReference = IID(
+    "{E73559CD-7003-4022-B134-27DC650B280F}"
+    )
 
 
 # A reference to a failed package.
@@ -907,9 +1009,9 @@ class ISetupFailedPackageReference(ISetupPackageReference):
     _iid_ = IID_ISetupFailedPackageReference
 
 
-IID_ISetupFailedPackageReference2 = (
-    IID("{0FAD873E-E874-42E3-B268-4FE2F096B9CA}")
-)
+IID_ISetupFailedPackageReference2 = IID(
+    "{0FAD873E-E874-42E3-B268-4FE2F096B9CA}"
+    )
 
 
 # A reference to a failed package.
@@ -947,7 +1049,7 @@ class ISetupPropertyStore(IUnknown):
         # noinspection PyUnresolvedReferences
         safearray = self.GetNames()
 
-        SafeArrayLock(safearray)
+        _SafeArrayLock(safearray)
 
         names = ctypes.cast(safearray.contents.pvData, POINTER(BSTR))
         cPackages = safearray.contents.rgsabound[0].cElements
@@ -956,29 +1058,31 @@ class ISetupPropertyStore(IUnknown):
         for i in range(cPackages):
             res.append(names[i])
 
-        SafeArrayUnlock(safearray)
+        _SafeArrayUnlock(safearray)
 
         return res
 
     def __iter__(self):
         for n in self.names:
-            v = VARIANT()
             # noinspection PyUnresolvedReferences
-            self.GetValue(n, ctypes.byref(v))
+            v = VARIANT()
+
+            self.GetValue(n, ctypes.byref(v))  # NOQA
 
             v = v.value
             if isinstance(v, BSTR):
                 v = v.value
 
-            yield Property(n, v)
+            yield Property(n.value, v)
 
     def __str__(self):
         return '\n'.join(str(prop) for prop in self)
 
 
-IID_ISetupLocalizedPropertyStore = (
-    IID("{5BB53126-E0D5-43DF-80F1-6B161E5C6F6C}")
-)
+IID_ISetupLocalizedPropertyStore = IID(
+    "{5BB53126-E0D5-43DF-80F1-6B161E5C6F6C}"
+    )
+
 
 # Provides localized named properties.
 class ISetupLocalizedPropertyStore(IUnknown):
@@ -989,7 +1093,7 @@ class ISetupLocalizedPropertyStore(IUnknown):
         # noinspection PyUnresolvedReferences
         safearray = self.GetNames()
 
-        SafeArrayLock(safearray)
+        _SafeArrayLock(safearray)
 
         names = ctypes.cast(safearray.contents.pvData, POINTER(BSTR))
         cPackages = safearray.contents.rgsabound[0].cElements
@@ -998,15 +1102,16 @@ class ISetupLocalizedPropertyStore(IUnknown):
         for i in range(cPackages):
             res.append(names[i])
 
-        SafeArrayUnlock(safearray)
+        _SafeArrayUnlock(safearray)
 
         return res
 
     def __iter__(self):
         for n in self.names:
-            v = VARIANT()
             # noinspection PyUnresolvedReferences
-            self.GetValue(n, ctypes.byref(v))
+            v = VARIANT()
+
+            self.GetValue(n, ctypes.byref(v))  # NOQA
 
             v = v.value
             if isinstance(v, BSTR):
@@ -1519,5 +1624,4 @@ class SetupConfiguration(IUnknown):
 
 if __name__ == '__main__':
     setup_config = SetupConfiguration.GetSetupConfiguration()
-    for instance_config in setup_config:
-        print(instance_config)
+    print(setup_config)

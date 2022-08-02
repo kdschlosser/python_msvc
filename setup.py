@@ -12,7 +12,7 @@ setup(
     long_description=(
         'Distutils and setup tools not working properly to compile on Windows?\n'
         'Tired of having a new visual studio version break your setup program?\n'
-        'This  library is the solution.'
+        'This library is the solution.'
     ),
     install_requires=[
         'comtypes==1.1.11',

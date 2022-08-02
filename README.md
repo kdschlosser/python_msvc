@@ -1,6 +1,6 @@
 # pyMSVC
 
-A fairly stupid proof build environment setup for compiling c extensions using pythons distutils or setup tools.
+A fairly stupid proof build environment setup for compiling c extensions using pythons distutils or setuptools.
 
 I created this module because distutils does not do a good job at setting up a Windows build environment.
 Distutils relies on static paths for the MSVC compiler It does not detect Visual Studio Build tools installations. And 
@@ -32,6 +32,7 @@ Both parameters accept either None or a float that is the version number fo the 
 * 14.0 Visual Studio 2015
 * 14.1x Visual Studio 2017
 * 14.2x Visual Studio 2019
+* 14.3x Visual Studio 2022
 
 Python recommends that any extensions that are compiled on Windows should be compiled with the same MSVC version
 that was used to compile Python. This is due to incompatibilities in the common runtime language between the 
@@ -153,5 +154,34 @@ Here are the properties and attributes available
 * ***libraries***: library paths
 
 
-Visual Studio 2019 has a whole new system for package installation. It no longer stores the information in the registry 
-for installed packages.
+Starting with Visual Studio 2017 Microsoft has added a COM interface that I am able to use
+to collect information about the installed versions of Visual Studio. 
+
+In order to collect pyMSVC to be able to use it in your build system you will 
+need to create a pyproject.toml file. In that file you need to have the following lines.
+
+    [build-system]
+    requires=["setuptools", "wheel", "pyMSVC;sys_platform=='win32'"]
+    build-backend="setuptools.build_meta"
+
+This will instruct pip to collect pyMSVC if the OS is Windows.
+In your setup.py file you want this at the top
+
+    import sys
+
+    if sys.platform.startswith('win'):
+        import pyMSVC
+        environment = pyMSVC.setup_environment()
+        print(environment)
+
+    import setuptools
+
+    # rest of setup code here
+
+The code above does everything for you. you do not need to create the 
+environment using `os.environ` and you do not have to pass any versions. 
+It will locate the compiler needed automatically if it is instaleld.  
+
+It's really that easy to use. You really don't have know the inner working of
+this library in order for it to be able to set up a proper build environment.
+
