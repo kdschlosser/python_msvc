@@ -1073,7 +1073,7 @@ class ISetupPropertyStore(IUnknown):
             if isinstance(v, BSTR):
                 v = v.value
 
-            yield Property(n.value, v)
+            yield Property(n, v)
 
     def __str__(self):
         return '\n'.join(str(prop) for prop in self)

@@ -38,10 +38,28 @@ import sys
 import ctypes
 import subprocess
 import winreg
-import distutils.log
+import logging
 from typing import Optional, Union
 
 _IS_WIN = sys.platform.startswith('win')
+
+logger = logging.getLogger(__name__)
+
+
+def _setup_logging():
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+    logger_handler = logging.StreamHandler()
+    logger_handler.setFormatter(formatter)
+    logger.addHandler(logger_handler)
+
+
+for item in sys.argv:
+    if item.startswith('-v') or item == '--verbose':
+        _setup_logging()
+        break
+
+
 
 if _IS_WIN:
     try:
@@ -517,7 +535,7 @@ class VisualCInfo(object):
         self._minimum_toolkit_version = minimum_toolkit_version
 
         if _vswhere is not None:
-            distutils.log.debug('\n' + str(_vswhere))
+            logger.debug('\n' + str(_vswhere))
 
             cpp_id = 'Microsoft.VisualCpp.Tools.Host{0}.Target{1}'.format(
                 environ.machine_architecture.upper(),
@@ -3908,7 +3926,7 @@ def setup_environment(
             'This script will only work with a Windows opperating system.'
         )
 
-    distutils.log.debug(
+    logger.debug(
         'Setting up Windows build environment, please wait.....'
     )
 
@@ -3945,10 +3963,10 @@ def setup_environment(
         vs_version
     )
 
-    distutils.log.debug('\n' + str(environment) + '\n\n')
-    distutils.log.debug('SET ENVIRONMENT VARIABLES')
-    distutils.log.debug('------------------------------------------------')
-    distutils.log.debug('\n')
+    logger.debug('\n' + str(environment) + '\n\n')
+    logger.debug('SET ENVIRONMENT VARIABLES')
+    logger.debug('------------------------------------------------')
+    logger.debug('\n')
 
     for key, value in environment.build_environment.items():
         old_val = os.environ.get(key, value)
@@ -3965,26 +3983,18 @@ def setup_environment(
                     item.strip() for item in value if item.strip()
                 )
 
-        distutils.log.debug(key + '=' + value)
+        logger.debug(key + '=' + value)
         os.environ[key] = value
 
-    distutils.log.debug('\n\n')
+    logger.debug('\n\n')
 
     return environment
 
 
 if __name__ == '__main__':
-    distutils.log.set_threshold(distutils.log.DEBUG)
+    _setup_logging()
 
     # build tools   2019 '16.10.31515.178'  '16.10.4'
     # visual studio 2019 '16.11.31729.503'  '16.11.5'
 
     envr = setup_environment()  # vs_version='16.10.4')
-    print()
-    print()
-    print('SET ENVIRONMENT VARIABLES')
-    print('------------------------------------------------')
-    print()
-    for k in envr.build_environment.keys():
-        v = os.environ[k]
-        print(k + '=', v)
