@@ -499,6 +499,7 @@ class VisualCInfo(object):
 
         self._strict_toolkit_version = strict_toolkit_version
         self._minimum_toolkit_version = minimum_toolkit_version
+
         py_version = sys.version_info[:2]
         if py_version in ((3, 4),):
             min_visual_c_version = 10.0
@@ -506,6 +507,8 @@ class VisualCInfo(object):
             min_visual_c_version = 14.0
         elif py_version in ((3, 9), (3, 10)):
             min_visual_c_version = 14.2
+        elif py_version in ((3, 11), (3, 12)):
+            min_visual_c_version = 14.3
         else:
             raise RuntimeError(
                 'This library does not support '
@@ -513,8 +516,8 @@ class VisualCInfo(object):
             )
 
         if (
-                strict_c_version is not None and
-                strict_c_version < min_visual_c_version
+            strict_c_version is not None and
+            strict_c_version < min_visual_c_version
         ):
             raise RuntimeError(
                 'The set minimum compiler version is lower then the '
@@ -3932,7 +3935,11 @@ def setup_environment(
 
     python_version = sys.version_info[:2]
     if minimum_c_version is None:
-        if python_version == (3, 10):
+        if python_version == (3, 12):
+            minimum_c_version = 14.3
+        elif python_version == (3, 11):
+            minimum_c_version = 14.3
+        elif python_version == (3, 10):
             minimum_c_version = 14.2
         elif python_version == (3, 9):
             minimum_c_version = 14.2
