@@ -40,6 +40,7 @@ import subprocess
 import winreg
 import logging
 from typing import Optional, Union
+__version__ = '0.5.1'
 
 _IS_WIN = sys.platform.startswith('win')
 
