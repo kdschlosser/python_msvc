@@ -4,7 +4,7 @@
 #
 # MIT License
 #
-# Copyright 2022  Kevin G. Schlosser
+# Copyright 2023  Kevin G. Schlosser
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -40,7 +40,7 @@ import subprocess
 import winreg
 import logging
 from typing import Optional, Union
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 
 _IS_WIN = sys.platform.startswith('win')
 
@@ -929,7 +929,10 @@ class VisualCInfo(object):
             def add(vers):
                 for base_pth, ver in vers:
                     if os.path.exists(base_pth):
-                        base_ver = float(int(ver.split('.')[0]))
+                        try:
+                            base_ver = float(int(ver.split('.')[0]))
+                        except ValueError:
+                            base_ver = float(int(ver.replace('vc', '').split('.')[0]))
 
                         self.__installed_versions[ver] = dict(
                             base=base_pth,
