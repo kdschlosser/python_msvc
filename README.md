@@ -185,3 +185,36 @@ It will locate the compiler needed automatically if it is instaleld.
 It's really that easy to use. You really don't have know the inner working of
 this library in order for it to be able to set up a proper build environment.
 
+
+###### New additions
+
+I added in the ability to check and see if Cmake is available as well as Ninja. 
+The reason I added this ability is because you can use Cmake to write the code 
+needed for Ninja to run. So what so important about being able to do that you ask?
+You are able to compile each source file in parallel. On multicore machines that 
+can really cut down on the compile time. Herte is an example. Sat it take 60 seconds
+for your project to compile. say you have 32 logical processors in your machine (like me)
+If you launch ninja with -j32 you will use 100% of the machines processing power to 
+compile your project. so 60 / 32 = 1.875 seconds. It is not going to take exactly 1.875 
+seconds but it gives you a decent idea. One of the projects I have takes about 1 minute 
+to compile normally and with Ninja it takes about 7 seconds. 
+
+Example of use
+
+    import subprocess
+    import sys
+    import os
+
+    if sys.platform.startswith('win'):
+        import pyMSVC
+        environment = pyMSVC.setup_environment()
+        print(environment)
+
+        if environment.visual_c.has_cmake and environment.visual_c.has_ninja:
+           subprocess.run('cmake -G Ninja')
+           subprocess.run(f'ninja -j{os.cpu_count()}')
+    
+    import setuptools
+
+
+you will not need to use setuptools or distutils to compile. you have to add the compiled files to your library once cmake as finished the compilations.
