@@ -1,6 +1,6 @@
 [project]
 name = "pyMSVC"
-version = "0.6.0"
+version = "0.6.1"
 description = "Simple to use MSVC build environment setup tool."
 requires-python = ">=3.6"
 dependencies = ["comtypes==1.4.13"]
