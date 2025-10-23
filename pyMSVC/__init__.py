@@ -40,6 +40,7 @@ import subprocess
 import winreg
 import logging
 import platform
+import sysconfig
 from typing import Optional, Union
 __version__ = '0.5.3'
 
@@ -56,11 +57,10 @@ def _setup_logging():
     logger.addHandler(logger_handler)
 
 
-for item in sys.argv:
-    if item.startswith('-v') or item == '--verbose':
+for itm in sys.argv:
+    if itm.startswith('-v') or itm == '--verbose':
         _setup_logging()
         break
-
 
 
 if _IS_WIN:
@@ -411,7 +411,11 @@ class PythonInfo(object):
 
         :rtype: str
         """
-        return 'Python%d%d.lib' % sys.version_info[:2]
+        if sys.version_info[:2] >= (3, 13):
+            if sysconfig.get_config_var("Py_GIL_DISABLED"):
+                return 'Python{0}{1}t.lib'.format(*sys.version_info[:2])
+
+        return 'Python{0}{1}.lib'.format(*sys.version_info[:2])
 
     @property
     def includes(self):
@@ -468,6 +472,17 @@ class PythonInfo(object):
 
 
 _MSVC_BUILD_TO_VERSION = {
+    1944: 14.44,
+    1943: 14.43,
+    1942: 14.42,
+    1941: 14.41,
+    1940: 14.40,
+    1939: 14.39,
+    1938: 14.38,
+    1937: 14.36,
+    1936: 14.36,
+    1935: 14.35,
+    1934: 14.34,
     1933: 14.33,
     1932: 14.32,
     1931: 14.31,
@@ -494,6 +509,7 @@ _MSVC_BUILD_TO_VERSION = {
     1600: 10.00,
     1500: 9.00
 }
+
 
 class VisualCInfo(object):
     """
@@ -537,7 +553,9 @@ class VisualCInfo(object):
         min_visual_c_version = _MSVC_BUILD_TO_VERSION.get(compiler_version, None)
 
         if min_visual_c_version is None:
-            min_visual_c_version = (compiler_version - 5000) / 100.0
+            logging.error('Unable to locate Visual C version using '
+                          'compiler version "{0}"'.format(compiler_version))
+            sys.exit(-1)
 
         if minimum_c_version is None:
             minimum_c_version = min_visual_c_version
@@ -546,22 +564,15 @@ class VisualCInfo(object):
             strict_c_version is not None and
             strict_c_version < min_visual_c_version
         ):
-            msg = (
-                'Set strict MSVC version ({0}) is lower than '
-                'the MSVC version that Python has '
-                'been compiled with ({1})'
-            ).format(strict_c_version, min_visual_c_version)
-
-            logging.warning(msg)
+            logging.error('Set strict MSVC version ({0}) is lower than the '
+                          'MSVC version that Python has been compiled with '
+                          '({1})'.format(strict_c_version, min_visual_c_version))
+            sys.exit(-1)
 
         if minimum_c_version < min_visual_c_version:
-            msg = (
-                'Set minimum MSVC version ({0}) is lower than '
-                'the MSVC version that Python has '
-                'been compiled with ({1})'
-            ).format(minimum_c_version, min_visual_c_version)
-
-            logging.warning(msg)
+            logging.warning('Set minimum MSVC version ({0}) is lower than the '
+                            'MSVC version that Python has been compiled with '
+                            '({1})'.format(minimum_c_version, min_visual_c_version))
 
         if strict_toolkit_version is not None:
             strict_toolkit_version = str(strict_toolkit_version / 10.0)
@@ -642,18 +653,11 @@ class VisualCInfo(object):
                 self._cpp_installation = cpp_installation
 
                 tools_version = None
-                tools_path = os.path.join(
-                    cpp_installation.path,
-                    'VC',
-                    'Tools',
-                    'MSVC'
-                )
+                tools_path = os.path.join(cpp_installation.path, 'VC', 'Tools', 'MSVC')
 
                 for package in cpp_installation.packages.vsix:
                     if package.id == tools_id:
-                        if not os.path.exists(
-                            os.path.join(tools_path, package.version)
-                        ):
+                        if not os.path.exists(os.path.join(tools_path, package.version)):
                             continue
 
                         if strict_toolkit_version is not None:
@@ -696,83 +700,56 @@ class VisualCInfo(object):
                 if tools_version is not None:
                     tools_version = tools_version.split('.')
                     self._toolset_version = (
-                        'v' + tools_version[0] +
-                        tools_version[1][0]
-                    )
+                        'v{0}{1}'.format(tools_version[0], tools_version[1][0]))
+
                     self._tools_version = '.'.join(tools_version)
 
                     self._tools_install_directory = os.path.join(
-                        tools_path, self._tools_version
-                    )
+                        tools_path, self._tools_version)
 
                     tools_redist_directory = (
-                        self._tools_install_directory.replace(
-                            'Tools',
-                            'Redist'
-                        )
-                    )
+                        self._tools_install_directory.replace('Tools', 'Redist'))
 
                     if os.path.exists(tools_redist_directory):
-                        self._tools_redist_directory = (
-                            tools_redist_directory + '\\'
-                        )
+                        self._tools_redist_directory = tools_redist_directory + '\\'
 
                         msvc_dll_path = os.path.join(
-                            tools_redist_directory,
-                            environ.python.architecture,
-                            'Microsoft.VC{0}.CRT'.format(
-                                self._toolset_version[1:]
-                            )
-                        )
+                            tools_redist_directory, environ.python.architecture,
+                            'Microsoft.VC{0}.CRT'.format(self._toolset_version[1:]))
 
                         if os.path.exists(msvc_dll_path):
                             self._msvc_dll_path = msvc_dll_path
 
-                install_directory = os.path.join(
-                    cpp_installation.path, 'VC'
-                )
+                install_directory = os.path.join(cpp_installation.path, 'VC')
                 if os.path.exists(install_directory):
                     self._install_directory = install_directory
 
-                msbuild_path = os.path.join(
-                    cpp_installation.path,
-                    'MSBuild',
-                    'Current',
-                    'Bin',
-                    'MSBuild.exe'
-                )
+                msbuild_path = os.path.join(cpp_installation.path, 'MSBuild',
+                                            'Current', 'Bin', 'MSBuild.exe')
 
                 if os.path.exists(msbuild_path):
                     msbuild_version = _get_file_version(msbuild_path)
-                    self._msbuild_version = '.'.join(
-                        str(itm) for itm in msbuild_version
-                    )
+                    self._msbuild_version = (
+                        '.'.join(str(item) for item in msbuild_version))
+
                     self._msbuild_path = msbuild_path
 
-                ide_directory = os.path.join(
-                    cpp_installation.path,
-                    'Common7',
-                    'IDE',
-                    'VC'
-                )
+                ide_directory = os.path.join(cpp_installation.path,
+                                             'Common7', 'IDE', 'VC')
+
                 if os.path.exists(ide_directory):
                     self._ide_install_directory = ide_directory
 
                 product_semantic_version = (
-                    cpp_installation.catalog.product_semantic_version
-                )
+                    cpp_installation.catalog.product_semantic_version)
+
                 if product_semantic_version is not None:
                     self._product_semantic_version = (
-                        product_semantic_version.split('+')[0]
-                    )
+                        product_semantic_version.split('+')[0])
 
-                devinit_path = os.path.join(
-                    cpp_installation.path,
-                    'Common7',
-                    'Tools',
-                    'devinit',
-                    'devinit.exe'
-                )
+                devinit_path = os.path.join(cpp_installation.path, 'Common7',
+                                            'Tools', 'devinit', 'devinit.exe')
+
                 if os.path.exists(devinit_path):
                     self._devinit_path = devinit_path
 
@@ -785,14 +762,9 @@ class VisualCInfo(object):
         :return: `True`/`False`
         """
         ide_path = os.path.split(self.ide_install_directory)[0]
-        ninja_path = os.path.join(
-            ide_path,
-            'CommonExtensions',
-            'Microsoft',
-            'CMake',
-            'Ninja',
-            'ninja.exe'
-        )
+        ninja_path = os.path.join(ide_path, 'CommonExtensions', 'Microsoft',
+                                  'CMake', 'Ninja', 'ninja.exe')
+
         return os.path.exists(ninja_path)
 
     @property
@@ -805,15 +777,9 @@ class VisualCInfo(object):
         """
         ide_path = os.path.split(self.ide_install_directory)[0]
 
-        cmake_path = os.path.join(
-            ide_path,
-            'CommonExtensions',
-            'Microsoft',
-            'CMake',
-            'CMake',
-            'bin',
-            'cmake.exe'
-        )
+        cmake_path = os.path.join(ide_path, 'CommonExtensions', 'Microsoft',
+                                  'CMake', 'CMake', 'bin', 'cmake.exe')
+
         return os.path.exists(cmake_path)
 
     @property
@@ -829,12 +795,8 @@ class VisualCInfo(object):
         paths = []
         ide_path = os.path.split(self.ide_install_directory)[0]
 
-        cmake_path = os.path.join(
-            ide_path,
-            'CommonExtensions',
-            'Microsoft',
-            'CMake'
-        )
+        cmake_path = os.path.join(ide_path, 'CommonExtensions',
+                                  'Microsoft', 'CMake')
 
         if os.path.exists(cmake_path):
             bin_path = os.path.join(cmake_path, 'CMake', 'bin')
@@ -848,9 +810,7 @@ class VisualCInfo(object):
         return paths
 
     @property
-    def cpp_installation(
-        self
-    ) -> Union[vswhere.ISetupInstance, vswhere.ISetupInstance2]:
+    def cpp_installation(self) -> Union[vswhere.ISetupInstance, vswhere.ISetupInstance2]:
         return self._cpp_installation
 
     @property
@@ -866,11 +826,9 @@ class VisualCInfo(object):
         """
         version = float(int(self.version.split('.')[0]))
 
-        reg_path = (
-            winreg.HKEY_LOCAL_MACHINE,
-            r'SOFTWARE\Microsoft\VisualStudio'
-            r'\{0:.1f}\Setup\F#'.format(version)
-        )
+        reg_path = (winreg.HKEY_LOCAL_MACHINE,
+                    r'SOFTWARE\Microsoft\VisualStudio'
+                    r'\{0:.1f}\Setup\F#'.format(version))
 
         f_sharp_path = _get_reg_value(reg_path, 'ProductDir')
         if f_sharp_path and os.path.exists(f_sharp_path):
@@ -892,26 +850,16 @@ class VisualCInfo(object):
                     max_ver = ver
                     found_version = version
 
-            f_sharp_path = os.path.join(
-                path,
-                found_version,
-                'Framework',
-                'v' + found_version
-            )
+            f_sharp_path = os.path.join(path, found_version,
+                                        'Framework', 'v' + found_version)
 
             if os.path.exists(f_sharp_path):
                 return f_sharp_path
 
         install_dir = os.path.split(self.install_directory)[0]
-        f_sharp_path = os.path.join(
-            install_dir,
-            'Common7',
-            'IDE',
-            'CommonExtensions',
-            'Microsoft',
-            'FSharp',
-            'Tools'
-        )
+        f_sharp_path = os.path.join(install_dir, 'Common7', 'IDE',  'CommonExtensions',
+                                    'Microsoft', 'FSharp', 'Tools')
+
         if os.path.exists(f_sharp_path):
             return f_sharp_path
 
@@ -926,16 +874,9 @@ class VisualCInfo(object):
         """
         if self._ide_install_directory is None:
             directory = self.install_directory
-            ide_directory = os.path.abspath(
-                os.path.join(directory, '..')
-            )
+            ide_directory = os.path.abspath(os.path.join(directory, '..'))
 
-            ide_directory = os.path.join(
-                ide_directory,
-                'Common7',
-                'IDE',
-                'VC'
-            )
+            ide_directory = os.path.join(ide_directory, 'Common7', 'IDE', 'VC')
             if os.path.exists(ide_directory):
                 self._ide_install_directory = ide_directory
 
@@ -953,8 +894,7 @@ class VisualCInfo(object):
         """
         if self._install_directory is None:
             self._install_directory = (
-                self._installed_c_paths[self.version]['base']
-            )
+                self._installed_c_paths[self.version]['base'])
 
         return self._install_directory
 
@@ -971,25 +911,17 @@ class VisualCInfo(object):
                         except ValueError:
                             ver = ver.replace('vc', '')
                             base_ver = float(
-                                int(ver.replace('vc', '').split('.')[0])
-                            )
+                                int(ver.replace('vc', '').split('.')[0]))
 
-                        self.__installed_versions[ver] = dict(
-                            base=base_pth,
-                            root=base_pth
-                        )
-                        self.__installed_versions[base_ver] = dict(
-                            base=base_pth,
-                            root=base_pth
-                        )
+                        self.__installed_versions[ver] = dict(base=base_pth,
+                                                              root=base_pth)
+                        self.__installed_versions[base_ver] = dict(base=base_pth,
+                                                                   root=base_pth)
 
             add(_get_program_files_vc())
 
-            reg_path = (
-                winreg.HKEY_LOCAL_MACHINE,
-                r'SOFTWARE\Policies\Microsoft'
-                r'\VisualStudio\Setup'
-            )
+            reg_path = (winreg.HKEY_LOCAL_MACHINE,
+                        r'SOFTWARE\Policies\Microsoft\VisualStudio\Setup')
 
             vs_path = _get_reg_value(reg_path, 'SharedInstallationPath')
 
@@ -998,22 +930,16 @@ class VisualCInfo(object):
                 if os.path.exists(vs_path):
                     res = []
 
-                    pths = [
-                        os.path.join(vs_path, vs_ver)
-                        for vs_ver in os.listdir(vs_path)
-                        if vs_ver.isdigit()
-                    ]
-                    res.extend(
-                        [item for pth in pths for item in _find_cl(pth)]
-                    )
+                    pths = [os.path.join(vs_path, vs_ver)
+                            for vs_ver in os.listdir(vs_path)
+                            if vs_ver.isdigit()]
+
+                    res.extend([item for pth in pths for item in _find_cl(pth)])
 
                     add(res)
 
-            reg_path = (
-                winreg.HKEY_CLASSES_ROOT,
-                r'Local Settings\Software'
-                r'\Microsoft\Windows\Shell\MuiCache'
-            )
+            reg_path = (winreg.HKEY_CLASSES_ROOT,
+                        r'Local Settings\Software\Microsoft\Windows\Shell\MuiCache')
 
             paths = []
 
@@ -1051,8 +977,8 @@ class VisualCInfo(object):
 
                 version = os.path.split(version)[1]
                 version = (
-                    version.replace('Microsoft Visual Studio', '').strip()
-                )
+                    version.replace('Microsoft Visual Studio', '').strip())
+
                 base_version = float(int(version.split('.')[0]))
 
                 base_path = path.split('\\VC\\')[0] + '\\VC'
@@ -1061,19 +987,13 @@ class VisualCInfo(object):
                 else:
                     vc_root = path.split('\\bin\\')[0]
 
-                self.__installed_versions[version] = dict(
-                    base=base_path,
-                    root=vc_root
-                )
-                self.__installed_versions[base_version] = dict(
-                    base=base_path,
-                    root=vc_root
-                )
+                self.__installed_versions[version] = dict(base=base_path,
+                                                          root=vc_root)
+                self.__installed_versions[base_version] = dict(base=base_path,
+                                                               root=vc_root)
 
-            reg_path = (
-                winreg.HKEY_LOCAL_MACHINE,
-                'SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7'
-            )
+            reg_path = (winreg.HKEY_LOCAL_MACHINE,
+                        'SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7')
 
             for key in _read_reg_values(reg_path):
                 try:
@@ -1084,10 +1004,8 @@ class VisualCInfo(object):
                 path = _get_reg_value(reg_path, key)
 
                 if (
-                    (
-                        os.path.exists(path) and
-                        version not in self.__installed_versions
-                    ) or version == 15.0
+                    (os.path.exists(path) and version not in self.__installed_versions) or
+                    version == 15.0
                 ):
 
                     if version == 15.0:
@@ -1096,14 +1014,10 @@ class VisualCInfo(object):
                     if not os.path.split(path)[1] == 'VC':
                         path = os.path.join(path, 'VC')
 
-                    self.__installed_versions[version] = dict(
-                        base=path,
-                        root=path
-                    )
-                    self.__installed_versions[key] = dict(
-                        base=path,
-                        root=path
-                    )
+                    self.__installed_versions[version] = dict(base=path,
+                                                              root=path)
+                    self.__installed_versions[key] = dict(base=path,
+                                                          root=path)
 
         return self.__installed_versions
 
@@ -1126,9 +1040,7 @@ class VisualCInfo(object):
         if self._cpp_version is None:
             if self.strict_c_version is not None:
                 if self.strict_c_version not in self._installed_c_paths:
-                    raise RuntimeError(
-                        'No Compatible Visual C version found.'
-                    )
+                    raise RuntimeError('No Compatible Visual C version found.')
 
                 self._cpp_version = str(self.strict_c_version)
                 return self._cpp_version
@@ -1145,9 +1057,7 @@ class VisualCInfo(object):
                         match = version
 
             if match is None:
-                raise RuntimeError(
-                    'No Compatible Visual C\\C++ version found.'
-                )
+                raise RuntimeError('No Compatible Visual C version found.')
 
             self._cpp_version = str(match)
 
@@ -1183,11 +1093,8 @@ class VisualCInfo(object):
         if self._toolset_version is None:
             tools_version = self.tools_version.split('.')
 
-            self._toolset_version = (
-                'v' +
-                tools_version[0] +
-                tools_version[1][:1]
-            )
+            self._toolset_version = 'v{0}{0}'.format(
+                tools_version[0], tools_version[1][:1])
 
         return self._toolset_version
 
@@ -1205,9 +1112,7 @@ class VisualCInfo(object):
 
         for f in os.listdir(msvc_dll_path):
             if f.endswith('dll'):
-                version = _get_file_version(
-                    os.path.join(msvc_dll_path, f)
-                )
+                version = _get_file_version(os.path.join(msvc_dll_path, f))
                 return '.'.join(str(ver) for ver in version)
 
     @property
@@ -1226,16 +1131,14 @@ class VisualCInfo(object):
             if toolset_version is None:
                 return None
 
-            folder_names = (
-                'Microsoft.VC{0}.CRT'.format(toolset_version[1:]),
-            )
+            folder_names = ('Microsoft.VC{0}.CRT'.format(toolset_version[1:]),)
 
             redist_path = self.tools_redist_directory
 
             for root, dirs, files in os.walk(redist_path):
                 def pass_directory():
-                    for itm in ('onecore', 'arm', 'spectre'):
-                        if itm in root.lower():
+                    for item in ('onecore', 'arm', 'spectre'):
+                        if item in root.lower():
                             return True
 
                     return False
@@ -1246,21 +1149,11 @@ class VisualCInfo(object):
                 for folder_name in folder_names:
                     if folder_name in dirs:
                         if x64 and ('amd64' in root or 'x64' in root):
-                            self._msvc_dll_path = os.path.join(
-                                root,
-                                folder_name
-                            )
+                            self._msvc_dll_path = os.path.join(root, folder_name)
                             break
-                        elif (
-                            not x64 and
-                            'amd64' not in root
-                            and 'x64' not in root
-                        ):
-                            self._msvc_dll_path = os.path.join(
-                                root,
-                                folder_name
-                            )
 
+                        elif not x64 and 'amd64' not in root and 'x64' not in root:
+                            self._msvc_dll_path = os.path.join(root, folder_name)
                             break
 
         return self._msvc_dll_path
@@ -1280,30 +1173,23 @@ class VisualCInfo(object):
 
             if 'MSVC' in tools_install_path:
                 redist_path = tools_install_path.replace(
-                    'Tools',
-                    'Redist'
-                )
+                    'Tools', 'Redist')
+
                 if (
                     not os.path.exists(redist_path) and
                     'BuildTools' in tools_install_path
                 ):
                     redist_path = redist_path.replace(
-                        'BuildRedist', 'BuildTools'
-                    )
+                        'BuildRedist', 'BuildTools')
             else:
-                redist_path = os.path.join(
-                    tools_install_path,
-                    'Redist'
-                )
+                redist_path = os.path.join(tools_install_path, 'Redist')
 
             if not os.path.exists(redist_path):
                 redist_path = os.path.split(redist_path)[0]
                 tools_version = None
 
                 for version in os.listdir(redist_path):
-                    if not os.path.isdir(
-                        os.path.join(redist_path, version)
-                    ):
+                    if not os.path.isdir(os.path.join(redist_path, version)):
                         continue
 
                     if version.startswith('v'):
@@ -1311,16 +1197,16 @@ class VisualCInfo(object):
 
                     if self._strict_toolkit_version is not None:
                         tk_version = (
-                            version[:len(self._strict_toolkit_version)]
-                        )
+                            version[:len(self._strict_toolkit_version)])
+
                         if tk_version == self._strict_toolkit_version:
                             tools_version = version
                             break
 
                     if self._minimum_toolkit_version is not None:
                         tk_version = (
-                            version[:len(self._minimum_toolkit_version)]
-                        )
+                            version[:len(self._minimum_toolkit_version)])
+
                         if tk_version < self._minimum_toolkit_version:
                             continue
 
@@ -1331,8 +1217,8 @@ class VisualCInfo(object):
 
                 if tools_version is not None:
                     self._tools_redist_directory = (
-                        os.path.join(redist_path, tools_version)
-                    )
+                        os.path.join(redist_path, tools_version))
+
                 else:
                     self._tools_redist_directory = ''
 
@@ -1376,16 +1262,16 @@ class VisualCInfo(object):
                 for version in versions:
                     if self._strict_toolkit_version is not None:
                         tk_version = (
-                            version[:len(self._strict_toolkit_version)]
-                        )
+                            version[:len(self._strict_toolkit_version)])
+
                         if tk_version == self._strict_toolkit_version:
                             tools_version = version
                             break
 
                     if self._minimum_toolkit_version is not None:
                         tk_version = (
-                            version[:len(self._minimum_toolkit_version)]
-                        )
+                            version[:len(self._minimum_toolkit_version)])
+
                         if tk_version < self._minimum_toolkit_version:
                             continue
 
@@ -1395,10 +1281,8 @@ class VisualCInfo(object):
                         tools_version = version
 
                 if tools_version is not None:
-                    self._tools_install_directory = os.path.join(
-                        tools_path,
-                        tools_version
-                    )
+                    self._tools_install_directory = (
+                        os.path.join(tools_path, tools_version))
 
                 else:
                     raise RuntimeError('Unable to locate build tools')
@@ -1426,6 +1310,7 @@ class VisualCInfo(object):
                 self._msbuild_version = '4.0'
             else:
                 self._msbuild_version = vc_version
+
         return self._msbuild_version
 
     @property
@@ -1446,12 +1331,8 @@ class VisualCInfo(object):
 
             version = float(int(self.version.split('.')[0]))
 
-            ms_build_path = os.path.join(
-                program_files,
-                'MSBuild',
-                '{0:.1f}'.format(version),
-                'bin'
-            )
+            ms_build_path = os.path.join(program_files, 'MSBuild',
+                                         '{0:.1f}'.format(version), 'bin')
 
             if self.platform == 'x64':
                 if os.path.exists(os.path.join(ms_build_path, 'x64')):
@@ -1479,17 +1360,13 @@ class VisualCInfo(object):
         """
         reg_path = (
             winreg.HKEY_LOCAL_MACHINE,
-            r'SOFTWARE\Wow6432Node\Microsoft\Windows'
-            r'\CurrentVersion\App Paths\hhw.exe'
-        )
+            r'SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\App Paths\hhw.exe')
 
         html_help_path = _get_reg_value(reg_path, 'Path')
         if html_help_path and os.path.exists(html_help_path):
             return html_help_path
 
-        if os.path.exists(
-                r'C:\Program Files (x86)\HTML Help Workshop'
-        ):
+        if os.path.exists(r'C:\Program Files (x86)\HTML Help Workshop'):
             return r'C:\Program Files (x86)\HTML Help Workshop'
 
     @property
@@ -1509,94 +1386,53 @@ class VisualCInfo(object):
         msbuild_path = self.msbuild_path
 
         ide_base_path = os.path.split(self.install_directory)[0]
-        perf_tools_x64_path = os.path.join(
-            ide_base_path,
-            'Team Tools',
-            'Performance Tools',
-            'x64'
-        )
+        perf_tools_x64_path = os.path.join(ide_base_path, 'Team Tools',
+                                           'Performance Tools', 'x64')
 
         if os.path.exists(perf_tools_x64_path):
             path += [perf_tools_x64_path]
 
-        perf_tools_path = os.path.join(
-            ide_base_path,
-            'Team Tools',
-            'Performance Tools'
-        )
+        perf_tools_path = os.path.join(ide_base_path, 'Team Tools',
+                                       'Performance Tools')
         if os.path.exists(perf_tools_path):
             path += [perf_tools_path]
 
-        com7_ide_path = os.path.join(
-            ide_base_path,
-            'Common7',
-            'IDE'
-        )
+        com7_ide_path = os.path.join(ide_base_path, 'Common7', 'IDE')
 
-        vc_packages_path = os.path.join(
-            com7_ide_path,
-            'VC',
-            'VCPackages'
-        )
+        vc_packages_path = os.path.join(com7_ide_path, 'VC', 'VCPackages')
         if os.path.exists(vc_packages_path):
             path += [vc_packages_path]
 
-        team_explorer_path = os.path.join(
-            com7_ide_path,
-            'CommonExtensions',
-            'Microsoft',
-            'TeamFoundation',
-            'Team Explorer'
-        )
+        team_explorer_path = os.path.join(com7_ide_path, 'CommonExtensions', 'Microsoft',
+                                          'TeamFoundation', 'Team Explorer')
+
         if os.path.exists(team_explorer_path):
             path += [team_explorer_path]
 
-        intellicode_cli_path = os.path.join(
-            com7_ide_path,
-            'Extensions',
-            'Microsoft',
-            'IntelliCode',
-            'CLI'
-        )
+        intellicode_cli_path = os.path.join(com7_ide_path, 'Extensions',
+                                            'Microsoft', 'IntelliCode', 'CLI')
+
         if os.path.exists(intellicode_cli_path):
             path += [intellicode_cli_path]
 
-        roslyn_path = os.path.join(
-            ide_base_path,
-            'MSBuild',
-            'Current',
-            'bin',
-            'Roslyn'
-        )
+        roslyn_path = os.path.join(ide_base_path, 'MSBuild', 'Current',
+                                   'bin', 'Roslyn')
         if os.path.exists(roslyn_path):
             path += [roslyn_path]
 
-        devinit_path = os.path.join(
-            ide_base_path,
-            'Common7',
-            'Tools',
-            'devinit'
-        )
+        devinit_path = os.path.join(ide_base_path, 'Common7', 'Tools', 'devinit')
         if os.path.exists(devinit_path):
             path += [devinit_path]
 
         vs_path = os.path.split(ide_base_path)[0]
         vs_path, edition = os.path.split(vs_path)
 
-        collection_tools_path = os.path.join(
-            vs_path,
-            'Shared',
-            'Common',
-            'VSPerfCollectionTools',
-            'vs' + edition
-        )
+        collection_tools_path = os.path.join(vs_path, 'Shared', 'Common',
+                                             'VSPerfCollectionTools', 'vs' + edition)
         if os.path.exists(collection_tools_path):
             path += [collection_tools_path]
 
-        collection_tools_path_x64 = os.path.join(
-            collection_tools_path,
-            'x64'
-        )
+        collection_tools_path_x64 = os.path.join(collection_tools_path, 'x64')
         if os.path.exists(collection_tools_path_x64):
             path += [collection_tools_path_x64]
 
@@ -1610,12 +1446,7 @@ class VisualCInfo(object):
         if html_help_path is not None:
             path += [html_help_path]
 
-        bin_path = os.path.join(
-            base_path,
-            'Host' + self.platform,
-            self.platform
-        )
-
+        bin_path = os.path.join(base_path, 'Host' + self.platform, self.platform)
         if not os.path.exists(bin_path):
             if self.platform == 'x64':
                 bin_path = os.path.join(base_path, 'x64')
@@ -1685,11 +1516,7 @@ class VisualCInfo(object):
             if not os.path.exists(lib):
                 lib = path
 
-        references_path = os.path.join(
-            lib,
-            'store',
-            'references'
-        )
+        references_path = os.path.join(lib, 'store', 'references')
 
         lib_path = []
         if os.path.exists(lib):
