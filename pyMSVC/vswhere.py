@@ -56,11 +56,11 @@ from comtypes import (
 )
 from comtypes._safearray import (  # NOQA
     SAFEARRAY,
-    VARIANT_BOOL,
     SafeArrayLock as _SafeArrayLock,
     SafeArrayUnlock as _SafeArrayUnlock
 )
 
+VARIANT_BOOL = ctypes.c_short
 LPVARIANT = POINTER(tagVARIANT)
 VARIANT = tagVARIANT
 ENUM = ctypes.c_uint
